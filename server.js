@@ -136,68 +136,58 @@ app.post("/render-prospect-video", async (req, res) => {
     });
   }
 
-  const safeBeforeLabel = escapeDrawtext(before_label);
-  const safeAfterLabel = escapeDrawtext(after_label);
-  const safeProspectId = makeSafePublicId(prospect_id) || "prospect";
+ const safeBeforeLabel = escapeDrawtext(before_label);
+const safeAfterLabel = escapeDrawtext(after_label);
+const safeProspectId = makeSafePublicId(prospect_id) || "prospect";
 
-  const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "ssp-prospect-"));
-  const beforePath = path.join(workDir, "before.jpg");
-  const afterPath = path.join(workDir, "after.jpg");
-  const outputPath = path.join(workDir, "prospect.mp4");
+const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "ssp-thumb-"));
+const beforePath = path.join(workDir, "before.jpg");
+const afterPath = path.join(workDir, "after.jpg");
+const outputPath = path.join(workDir, "thumbnail.jpg");
 
-  try {
-    console.log(`[PROSPECT VIDEO] Starting render for ${safeProspectId}`);
+try {
+  console.log(`[PROSPECT THUMBNAIL] Starting render for ${safeProspectId}`);
 
-    await downloadFile(before_image_url, beforePath);
-    await downloadFile(after_image_url, afterPath);
+  await downloadFile(before_image_url, beforePath);
+  await downloadFile(after_image_url, afterPath);
 
-    const beforeFrames = Math.round(beforeDuration * frameRate);
-    const afterFrames = Math.round(afterDuration * frameRate);
-    const outputDuration = beforeDuration + afterDuration - transitionDuration;
+  const filter = [
+    `[0:v]scale=960:1080:force_original_aspect_ratio=decrease,
+pad=960:1080:(ow-iw)/2:(oh-ih)/2,
+setsar=1[before]`,
 
-    const filter = [
-      `[0:v]scale=1920:1080:force_original_aspect_ratio=decrease,
-pad=1920:1080:(ow-iw)/2:(oh-ih)/2,
-setsar=1,
-zoompan=z='min(zoom+0.0007,1.05)':
-x='iw/2-(iw/zoom/2)':
-y='ih/2-(ih/zoom/2)':
-d=${beforeFrames}:s=1920x1080:fps=${frameRate},
+    `[1:v]scale=960:1080:force_original_aspect_ratio=decrease,
+pad=960:1080:(ow-iw)/2:(oh-ih)/2,
+setsar=1[after]`,
+
+    `[before][after]hstack=inputs=2,
+drawbox=x=958:y=0:w=4:h=1080:color=white@0.95:t=fill,
+drawbox=x=(w/2)-75:y=(h/2)-75:w=150:h=150:color=black@0.45:t=fill,
+drawtext=text='>':
+fontcolor=white:
+fontsize=110:
+x=(w-tw)/2:
+y=(h-th)/2-8,
 drawtext=text='${safeBeforeLabel}':
 fontcolor=white:
-fontsize=42:
+fontsize=34:
 box=1:
 boxcolor=black@0.55:
-boxborderw=18:
-x=60:
-y=h-th-60
-[beforev]`,
-
-      `[1:v]scale=1920:1080:force_original_aspect_ratio=decrease,
-pad=1920:1080:(ow-iw)/2:(oh-ih)/2,
-setsar=1,
-zoompan=z='min(zoom+0.0003,1.02)':
-x='iw/2-(iw/zoom/2)':
-y='ih/2-(ih/zoom/2)':
-d=${afterFrames}:s=1920x1080:fps=${frameRate},
+boxborderw=14:
+x=40:
+y=h-th-40,
 drawtext=text='${safeAfterLabel}':
 fontcolor=white:
-fontsize=42:
+fontsize=34:
 box=1:
 boxcolor=black@0.55:
-boxborderw=18:
-x=60:
-y=h-th-60
-[afterv]`,
-
-      `[beforev][afterv]xfade=
-transition=${transition}:
-duration=${transitionDuration}:
-offset=${beforeDuration}
-[outv]`
-    ]
-      .join(";")
-      .replace(/\s*\n\s*/g, "");
+boxborderw=14:
+x=w-tw-40:
+y=h-th-40
+[out]`
+  ]
+    .join(";")
+    .replace(/\s*\n\s*/g, "");
 
     await execFileAsync(
       "ffmpeg",
