@@ -56,21 +56,19 @@ async function downloadFile(url, outputPath) {
 // ── PROSPECT VIDEO RENDER ENDPOINT ─────────────────────────────────────────
 
 app.post("/render-prospect-video", async (req, res) => {
-  const {
-    before_image_url,
-    after_image_url,
+ const {
+  before_image_url,
+  after_image_url,
 
-    // Timing controls
-    before_duration = 6,
-    after_duration = 8,
-    transition_duration = 1,
+  before_duration = 6,
+  after_duration = 8,
+  transition_duration = 1,
+  transition = "wipeleft",
+  fps = 30,
 
-    // Transition control
-    transition = "wipeleft",
-
-    // Video settings
-    fps = 30
-  } = req.body || {};
+  before_label = "ORIGINAL PHOTO",
+  after_label = "VIRTUALLY STAGED"
+} = req.body || {};
 
   // ── VALIDATION ───────────────────────────────────────────────────────────
 
