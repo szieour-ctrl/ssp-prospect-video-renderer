@@ -275,25 +275,45 @@ offset=${beforeDuration}
 // ── THUMBNAIL ENDPOINT ─────────────────────────────────────────────────────
 
 app.post("/render-prospect-thumbnail", async (req, res) => {
-  const {
-    before_image_url,
-    after_image_url,
+  const filter = [
+  `[0:v]scale=960:1080:force_original_aspect_ratio=decrease,
+pad=960:1080:(ow-iw)/2:(oh-ih)/2,
+setsar=1[before]`,
 
-    before_label = "ORIGINAL LISTING PHOTO",
-    after_label = "SMART STAGE PRO PREVIEW",
+  `[1:v]scale=960:1080:force_original_aspect_ratio=decrease,
+pad=960:1080:(ow-iw)/2:(oh-ih)/2,
+setsar=1[after]`,
 
-    prospect_id = "prospect",
-    agent_name = "",
-    property_address = "",
-    mls_number = ""
-  } = req.body || {};
-
-  if (!before_image_url || !after_image_url) {
-    return res.status(400).json({
-      success: false,
-      error: "Missing before_image_url or after_image_url"
-    });
-  }
+  `[before][after]hstack=inputs=2,
+drawbox=x=958:y=0:w=4:h=1080:color=white@0.95:t=fill,
+drawbox=x=934:y=465:w=52:h=150:color=white@0.85:t=fill,
+drawbox=x=938:y=469:w=44:h=142:color=black@0.35:t=fill,
+drawbox=x=(w/2)-80:y=(h/2)-80:w=160:h=160:color=black@0.35:t=fill,
+drawtext=text='▶':
+fontcolor=white:
+fontsize=96:
+x=(w-tw)/2+8:
+y=(h-th)/2-2,
+drawtext=text='${safeBeforeLabel}':
+fontcolor=white:
+fontsize=34:
+box=1:
+boxcolor=black@0.55:
+boxborderw=14:
+x=40:
+y=h-th-40,
+drawtext=text='${safeAfterLabel}':
+fontcolor=white:
+fontsize=34:
+box=1:
+boxcolor=black@0.55:
+boxborderw=14:
+x=w-tw-40:
+y=h-th-40
+[out]`
+]
+  .join(";")
+  .replace(/\s*\n\s*/g, "");
 
   const safeBeforeLabel = escapeDrawtext(before_label);
   const safeAfterLabel = escapeDrawtext(after_label);
