@@ -192,16 +192,7 @@ app.post("/render-prospect-video", async (req, res) => {
       "y='ih/2-(ih/zoom/2)':" +
       `d=${beforeFrames}:` +
       "s=1920x1080:" +
-      `fps=${frameRate}," +
-    "drawtext=" +
-      "text='ORIGINAL PHOTO':" +
-      "fontcolor=white:" +
-      "fontsize=42:" +
-      "box=1:" +
-      "boxcolor=black@0.55:" +
-      "boxborderw=18:" +
-      "x=60:" +
-      "y=h-th-60" +
+      `fps=${frameRate}` +
     "[beforev]",
 
   "[1:v]" +
@@ -214,16 +205,7 @@ app.post("/render-prospect-video", async (req, res) => {
       "y='ih/2-(ih/zoom/2)':" +
       `d=${afterFrames}:` +
       "s=1920x1080:" +
-      `fps=${frameRate}," +
-    "drawtext=" +
-      "text='VIRTUALLY STAGED':" +
-      "fontcolor=white:" +
-      "fontsize=42:" +
-      "box=1:" +
-      "boxcolor=black@0.55:" +
-      "boxborderw=18:" +
-      "x=60:" +
-      "y=h-th-60" +
+      `fps=${frameRate}` +
     "[afterv]",
 
   "[beforev][afterv]" +
