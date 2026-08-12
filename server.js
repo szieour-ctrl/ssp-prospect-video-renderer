@@ -438,20 +438,20 @@ app.post(
          color=white@0.95:
          t=fill,
 
-         drawbox=
-         x=(w/2)-82:
-         y=(h/2)-82:
-         w=164:
-         h=164:
-         color=black@0.38:
-         t=fill,
+        drawbox=
+x=(w/2)-80:
+y=(h/2)-80:
+w=160:
+h=160:
+color=black@0.45:
+t=fill,
 
-         drawtext=
-         text='>':
-         fontcolor=white:
-         fontsize=112:
-         x=(w-tw)/2:
-         y=(h-th)/2-10,
+drawtext=
+text='▶':
+fontcolor=white:
+fontsize=96:
+x=(w-tw)/2+6:
+y=(h-th)/2-4,
 
          drawtext=
          text='${safeBeforeLabel}':
