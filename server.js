@@ -289,11 +289,11 @@ drawbox=x=958:y=0:w=4:h=1080:color=white@0.95:t=fill,
 drawbox=x=934:y=465:w=52:h=150:color=white@0.85:t=fill,
 drawbox=x=938:y=469:w=44:h=142:color=black@0.35:t=fill,
 drawbox=x=(w/2)-80:y=(h/2)-80:w=160:h=160:color=black@0.35:t=fill,
-drawtext=text='▶':
+drawtext=text='>':
 fontcolor=white:
-fontsize=96:
-x=(w-tw)/2+8:
-y=(h-th)/2-2,
+fontsize=110:
+x=(w-tw)/2:
+y=(h-th)/2-8,
 drawtext=text='${safeBeforeLabel}':
 fontcolor=white:
 fontsize=34:
