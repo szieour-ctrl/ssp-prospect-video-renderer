@@ -33,7 +33,7 @@ app.get("/health", (req, res) => {
   });
 });
 
-// ── DOWNLOAD HELPER ────────────────────────────────────────────────────────
+// ── HELPERS ────────────────────────────────────────────────────────────────
 
 async function downloadFile(url, outputPath) {
   const response = await axios({
@@ -45,15 +45,11 @@ async function downloadFile(url, outputPath) {
 
   await new Promise((resolve, reject) => {
     const writer = fs.createWriteStream(outputPath);
-
     response.data.pipe(writer);
-
     writer.on("finish", resolve);
     writer.on("error", reject);
   });
 }
-
-// ── SAFE TEXT FOR FFMPEG DRAWTEXT ─────────────────────────────────────────
 
 function escapeDrawtext(value) {
   return String(value || "")
@@ -63,8 +59,6 @@ function escapeDrawtext(value) {
     .replace(/%/g, "\\%");
 }
 
-// ── SAFE CLOUDINARY PUBLIC ID ──────────────────────────────────────────────
-
 function makeSafePublicId(value) {
   return String(value || "prospect")
     .toLowerCase()
@@ -73,37 +67,27 @@ function makeSafePublicId(value) {
     .replace(/^-|-$/g, "");
 }
 
-// ── PROSPECT VIDEO RENDER ENDPOINT ─────────────────────────────────────────
+// ── VIDEO ENDPOINT ─────────────────────────────────────────────────────────
 
 app.post("/render-prospect-video", async (req, res) => {
   const {
-    // Required source images
     before_image_url,
     after_image_url,
 
-    // Timing controls
     before_duration = 6,
     after_duration = 8,
     transition_duration = 1,
-
-    // Transition control
     transition = "wipeleft",
-
-    // Video settings
     fps = 30,
 
-    // Scene labels
     before_label = "ORIGINAL PHOTO",
     after_label = "VIRTUALLY STAGED",
 
-    // Prospect metadata
     prospect_id = "prospect",
     agent_name = "",
     property_address = "",
     mls_number = ""
   } = req.body || {};
-
-  // ── VALIDATION ───────────────────────────────────────────────────────────
 
   if (!before_image_url || !after_image_url) {
     return res.status(400).json({
@@ -112,30 +96,21 @@ app.post("/render-prospect-video", async (req, res) => {
     });
   }
 
-  if (
-    !Number.isFinite(Number(before_duration)) ||
-    Number(before_duration) <= 0
-  ) {
+  if (!Number.isFinite(Number(before_duration)) || Number(before_duration) <= 0) {
     return res.status(400).json({
       success: false,
       error: "before_duration must be greater than 0"
     });
   }
 
-  if (
-    !Number.isFinite(Number(after_duration)) ||
-    Number(after_duration) <= 0
-  ) {
+  if (!Number.isFinite(Number(after_duration)) || Number(after_duration) <= 0) {
     return res.status(400).json({
       success: false,
       error: "after_duration must be greater than 0"
     });
   }
 
-  if (
-    !Number.isFinite(Number(transition_duration)) ||
-    Number(transition_duration) < 0
-  ) {
+  if (!Number.isFinite(Number(transition_duration)) || Number(transition_duration) < 0) {
     return res.status(400).json({
       success: false,
       error: "transition_duration must be 0 or greater"
@@ -161,52 +136,24 @@ app.post("/render-prospect-video", async (req, res) => {
     });
   }
 
-  // ── NORMALIZE TEXT / METADATA ────────────────────────────────────────────
-
   const safeBeforeLabel = escapeDrawtext(before_label);
   const safeAfterLabel = escapeDrawtext(after_label);
+  const safeProspectId = makeSafePublicId(prospect_id) || "prospect";
 
-  const safeProspectId =
-    makeSafePublicId(prospect_id) || "prospect";
-
-  // ── WORK DIRECTORY ───────────────────────────────────────────────────────
-
-  const workDir = fs.mkdtempSync(
-    path.join(os.tmpdir(), "ssp-prospect-")
-  );
-
+  const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "ssp-prospect-"));
   const beforePath = path.join(workDir, "before.jpg");
   const afterPath = path.join(workDir, "after.jpg");
   const outputPath = path.join(workDir, "prospect.mp4");
 
   try {
-    console.log(
-      `[PROSPECT VIDEO] Starting render for ${safeProspectId}`
-    );
-
-    console.log("[PROSPECT VIDEO] Downloading source images...");
+    console.log(`[PROSPECT VIDEO] Starting render for ${safeProspectId}`);
 
     await downloadFile(before_image_url, beforePath);
     await downloadFile(after_image_url, afterPath);
 
-    console.log("[PROSPECT VIDEO] Images downloaded.");
-
-    // ── FRAME COUNTS ────────────────────────────────────────────────────────
-
-    const beforeFrames = Math.round(
-      beforeDuration * frameRate
-    );
-
-    const afterFrames = Math.round(
-      afterDuration * frameRate
-    );
-
-    const outputDuration =
-      beforeDuration +
-      afterDuration -
-      transitionDuration;
-
-    // ── FFMPEG FILTER ───────────────────────────────────────────────────────
+    const beforeFrames = Math.round(beforeDuration * frameRate);
+    const afterFrames = Math.round(afterDuration * frameRate);
+    const outputDuration = beforeDuration + afterDuration - transitionDuration;
 
     const filter = [
       `[0:v]scale=1920:1080:force_original_aspect_ratio=decrease,
@@ -252,59 +199,23 @@ offset=${beforeDuration}
       .join(";")
       .replace(/\s*\n\s*/g, "");
 
-    console.log(
-      `[PROSPECT VIDEO] Rendering: ` +
-      `before=${beforeDuration}s ` +
-      `after=${afterDuration}s ` +
-      `transition=${transition} ` +
-      `transitionDuration=${transitionDuration}s ` +
-      `fps=${frameRate}`
-    );
-
-    // ── FFMPEG RENDER ───────────────────────────────────────────────────────
-
     await execFileAsync(
       "ffmpeg",
       [
         "-y",
-
-        "-loop",
-        "1",
-        "-i",
-        beforePath,
-
-        "-loop",
-        "1",
-        "-i",
-        afterPath,
-
-        "-filter_complex",
-        filter,
-
-        "-map",
-        "[outv]",
-
-        "-t",
-        String(outputDuration),
-
-        "-c:v",
-        "libx264",
-
-        "-preset",
-        "medium",
-
-        "-crf",
-        "18",
-
-        "-pix_fmt",
-        "yuv420p",
-
-        "-movflags",
-        "+faststart",
-
-        "-r",
-        String(frameRate),
-
+        "-loop", "1",
+        "-i", beforePath,
+        "-loop", "1",
+        "-i", afterPath,
+        "-filter_complex", filter,
+        "-map", "[outv]",
+        "-t", String(outputDuration),
+        "-c:v", "libx264",
+        "-preset", "medium",
+        "-crf", "18",
+        "-pix_fmt", "yuv420p",
+        "-movflags", "+faststart",
+        "-r", String(frameRate),
         outputPath
       ],
       {
@@ -312,39 +223,23 @@ offset=${beforeDuration}
       }
     );
 
-    console.log("[PROSPECT VIDEO] FFmpeg render complete.");
-
-    // ── CLOUDINARY UPLOAD ───────────────────────────────────────────────────
-
-    const upload = await cloudinary.uploader.upload(
-      outputPath,
-      {
-        resource_type: "video",
-        folder: "ssp-prospects",
-        public_id: safeProspectId,
-        overwrite: true
-      }
-    );
-
-    console.log(
-      `[PROSPECT VIDEO] Uploaded: ${upload.secure_url}`
-    );
-
-    // ── RESPONSE ────────────────────────────────────────────────────────────
+    const upload = await cloudinary.uploader.upload(outputPath, {
+      resource_type: "video",
+      folder: "ssp-prospects",
+      public_id: safeProspectId,
+      overwrite: true
+    });
 
     return res.json({
       success: true,
-
       video_url: upload.secure_url,
       public_id: upload.public_id,
-
       prospect: {
         prospect_id,
         agent_name,
         property_address,
         mls_number
       },
-
       render: {
         before_duration: beforeDuration,
         after_duration: afterDuration,
@@ -359,10 +254,7 @@ offset=${beforeDuration}
       }
     });
   } catch (error) {
-    console.error(
-      "[PROSPECT VIDEO] Render failed:",
-      error.stderr || error.message || error
-    );
+    console.error("[PROSPECT VIDEO] Render failed:", error.stderr || error.message || error);
 
     return res.status(500).json({
       success: false,
@@ -375,10 +267,139 @@ offset=${beforeDuration}
         force: true
       });
     } catch (cleanupError) {
-      console.error(
-        "[PROSPECT VIDEO] Cleanup failed:",
-        cleanupError.message
-      );
+      console.error("[PROSPECT VIDEO] Cleanup failed:", cleanupError.message);
+    }
+  }
+});
+
+// ── THUMBNAIL ENDPOINT ─────────────────────────────────────────────────────
+
+app.post("/render-prospect-thumbnail", async (req, res) => {
+  const {
+    before_image_url,
+    after_image_url,
+
+    before_label = "ORIGINAL LISTING PHOTO",
+    after_label = "SMART STAGE PRO PREVIEW",
+
+    prospect_id = "prospect",
+    agent_name = "",
+    property_address = "",
+    mls_number = ""
+  } = req.body || {};
+
+  if (!before_image_url || !after_image_url) {
+    return res.status(400).json({
+      success: false,
+      error: "Missing before_image_url or after_image_url"
+    });
+  }
+
+  const safeBeforeLabel = escapeDrawtext(before_label);
+  const safeAfterLabel = escapeDrawtext(after_label);
+  const safeProspectId = makeSafePublicId(prospect_id) || "prospect";
+
+  const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "ssp-thumb-"));
+  const beforePath = path.join(workDir, "before.jpg");
+  const afterPath = path.join(workDir, "after.jpg");
+  const outputPath = path.join(workDir, "thumbnail.jpg");
+
+  try {
+    console.log(`[PROSPECT THUMBNAIL] Starting render for ${safeProspectId}`);
+
+    await downloadFile(before_image_url, beforePath);
+    await downloadFile(after_image_url, afterPath);
+
+    const filter = [
+      `[0:v]scale=960:1080:force_original_aspect_ratio=decrease,
+pad=960:1080:(ow-iw)/2:(oh-ih)/2,
+setsar=1[before]`,
+
+      `[1:v]scale=960:1080:force_original_aspect_ratio=decrease,
+pad=960:1080:(ow-iw)/2:(oh-ih)/2,
+setsar=1[after]`,
+
+      `[before][after]hstack=inputs=2,
+drawbox=x=958:y=0:w=4:h=1080:color=white@0.95:t=fill,
+drawbox=x=934:y=465:w=52:h=150:color=white@0.85:t=fill,
+drawbox=x=938:y=469:w=44:h=142:color=black@0.35:t=fill,
+drawtext=text='${safeBeforeLabel}':
+fontcolor=white:
+fontsize=34:
+box=1:
+boxcolor=black@0.55:
+boxborderw=14:
+x=40:
+y=h-th-40,
+drawtext=text='${safeAfterLabel}':
+fontcolor=white:
+fontsize=34:
+box=1:
+boxcolor=black@0.55:
+boxborderw=14:
+x=w-tw-40:
+y=h-th-40
+[out]`
+    ]
+      .join(";")
+      .replace(/\s*\n\s*/g, "");
+
+    await execFileAsync(
+      "ffmpeg",
+      [
+        "-y",
+        "-i", beforePath,
+        "-i", afterPath,
+        "-filter_complex", filter,
+        "-map", "[out]",
+        "-frames:v", "1",
+        "-q:v", "2",
+        outputPath
+      ],
+      {
+        maxBuffer: 20 * 1024 * 1024
+      }
+    );
+
+    const upload = await cloudinary.uploader.upload(outputPath, {
+      resource_type: "image",
+      folder: "ssp-prospects",
+      public_id: `${safeProspectId}-thumbnail`,
+      overwrite: true
+    });
+
+    return res.json({
+      success: true,
+      image_url: upload.secure_url,
+      public_id: upload.public_id,
+      prospect: {
+        prospect_id,
+        agent_name,
+        property_address,
+        mls_number
+      },
+      thumbnail: {
+        width: 1920,
+        height: 1080,
+        before_label,
+        after_label
+      }
+    });
+  } catch (error) {
+    console.error("[PROSPECT THUMBNAIL] Render failed:", error.stderr || error.message || error);
+
+    return res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  } finally {
+    try {
+      fs.rmSync(workDir, {
+        recursive: true,
+        force: true
+      });
+    } catch (cleanupError) {
+      console.error("[PROSPECT THUMBNAIL] Cleanup failed:", cleanupError.message);
     }
   }
 });
@@ -386,7 +407,5 @@ offset=${beforeDuration}
 // ── SERVER ─────────────────────────────────────────────────────────────────
 
 app.listen(PORT, () => {
-  console.log(
-    `SSP Prospect Video Renderer listening on port ${PORT}`
-  );
+  console.log(`SSP Prospect Video Renderer listening on port ${PORT}`);
 });
