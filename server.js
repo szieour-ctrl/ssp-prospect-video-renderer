@@ -181,40 +181,47 @@ app.post("/render-prospect-video", async (req, res) => {
     // Then:
     // deterministic xfade transition.
 
-   const filter = [
-  "[0:v]" +
-    "scale=1920:1080:force_original_aspect_ratio=decrease," +
-    "pad=1920:1080:(ow-iw)/2:(oh-ih)/2," +
-    "setsar=1," +
-    "zoompan=" +
-      "z='min(zoom+0.0007,1.05)':" +
-      "x='iw/2-(iw/zoom/2)':" +
-      "y='ih/2-(ih/zoom/2)':" +
-      `d=${beforeFrames}:` +
-      "s=1920x1080:" +
-      `fps=${frameRate}` +
-    "[beforev]",
+  const filter = [
+  `[0:v]scale=1920:1080:force_original_aspect_ratio=decrease,
+pad=1920:1080:(ow-iw)/2:(oh-ih)/2,
+setsar=1,
+zoompan=z='min(zoom+0.0007,1.05)':
+x='iw/2-(iw/zoom/2)':
+y='ih/2-(ih/zoom/2)':
+d=${beforeFrames}:s=1920x1080:fps=${frameRate},
+drawtext=text='ORIGINAL PHOTO':
+fontcolor=white:
+fontsize=42:
+box=1:
+boxcolor=black@0.55:
+boxborderw=18:
+x=60:
+y=h-th-60
+[beforev]`,
 
-  "[1:v]" +
-    "scale=1920:1080:force_original_aspect_ratio=decrease," +
-    "pad=1920:1080:(ow-iw)/2:(oh-ih)/2," +
-    "setsar=1," +
-    "zoompan=" +
-      "z='min(zoom+0.0003,1.02)':" +
-      "x='iw/2-(iw/zoom/2)':" +
-      "y='ih/2-(ih/zoom/2)':" +
-      `d=${afterFrames}:` +
-      "s=1920x1080:" +
-      `fps=${frameRate}` +
-    "[afterv]",
+  `[1:v]scale=1920:1080:force_original_aspect_ratio=decrease,
+pad=1920:1080:(ow-iw)/2:(oh-ih)/2,
+setsar=1,
+zoompan=z='min(zoom+0.0003,1.02)':
+x='iw/2-(iw/zoom/2)':
+y='ih/2-(ih/zoom/2)':
+d=${afterFrames}:s=1920x1080:fps=${frameRate},
+drawtext=text='VIRTUALLY STAGED':
+fontcolor=white:
+fontsize=42:
+box=1:
+boxcolor=black@0.55:
+boxborderw=18:
+x=60:
+y=h-th-60
+[afterv]`,
 
-  "[beforev][afterv]" +
-    `xfade=` +
-    `transition=${transition}:` +
-    `duration=${transitionDuration}:` +
-    `offset=${beforeDuration}` +
-    "[outv]"
-].join(";");
+  `[beforev][afterv]xfade=
+transition=${transition}:
+duration=${transitionDuration}:
+offset=${beforeDuration}
+[outv]`
+].join(";").replace(/\s*\n\s*/g, "");
 
     console.log(
       `[PROSPECT VIDEO] Rendering: before=${beforeDuration}s ` +
