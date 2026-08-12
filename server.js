@@ -187,7 +187,7 @@ zoompan=z='min(zoom+0.0007,1.05)':
 x='iw/2-(iw/zoom/2)':
 y='ih/2-(ih/zoom/2)':
 d=${beforeFrames}:s=1920x1080:fps=${frameRate},
-drawtext=text='ORIGINAL PHOTO':
+drawtext=text='${before_label}':
 fontcolor=white:
 fontsize=42:
 box=1:
@@ -204,7 +204,7 @@ zoompan=z='min(zoom+0.0003,1.02)':
 x='iw/2-(iw/zoom/2)':
 y='ih/2-(ih/zoom/2)':
 d=${afterFrames}:s=1920x1080:fps=${frameRate},
-drawtext=text='VIRTUALLY STAGED':
+drawtext=text='${after_label}':
 fontcolor=white:
 fontsize=42:
 box=1:
