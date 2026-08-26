@@ -7,6 +7,7 @@ const os = require("os");
 const path = require("path");
 const { execFile } = require("child_process");
 const { promisify } = require("util");
+
 const {
   S3Client,
   PutObjectCommand
@@ -37,7 +38,9 @@ const s3 = new S3Client({
 app.get("/health", (req, res) => {
   res.json({
     status: "ok",
-    service: "ssp-prospect-video-renderer"
+    service: "ssp-prospect-video-renderer",
+    storage: "s3",
+    region: AWS_REGION
   });
 });
 
@@ -79,6 +82,50 @@ function makeSafePublicId(value) {
     .replace(/^-|-$/g, "");
 }
 
+function ensureS3Configured() {
+  if (!AWS_S3_BUCKET) {
+    throw new Error(
+      "AWS_S3_BUCKET environment variable is not configured"
+    );
+  }
+}
+
+function encodeS3Key(key) {
+  return key
+    .split("/")
+    .map(segment => encodeURIComponent(segment))
+    .join("/");
+}
+
+function buildS3Url(key) {
+  return `https://${AWS_S3_BUCKET}.s3.${AWS_REGION}.amazonaws.com/${encodeS3Key(
+    key
+  )}`;
+}
+
+async function uploadFileToS3({
+  filePath,
+  key,
+  contentType
+}) {
+  ensureS3Configured();
+
+  await s3.send(
+    new PutObjectCommand({
+      Bucket: AWS_S3_BUCKET,
+      Key: key,
+      Body: fs.createReadStream(filePath),
+      ContentType: contentType,
+      CacheControl: "public, max-age=31536000"
+    })
+  );
+
+  return {
+    url: buildS3Url(key),
+    key
+  };
+}
+
 // ─────────────────────────────────────────────────────────────
 // PROSPECT VIDEO
 // ─────────────────────────────────────────────────────────────
@@ -115,28 +162,40 @@ app.post("/render-prospect-video", async (req, res) => {
   const transitionDuration = Number(transition_duration);
   const frameRate = Number(fps);
 
-  if (!Number.isFinite(beforeDuration) || beforeDuration <= 0) {
+  if (
+    !Number.isFinite(beforeDuration) ||
+    beforeDuration <= 0
+  ) {
     return res.status(400).json({
       success: false,
       error: "before_duration must be greater than 0"
     });
   }
 
-  if (!Number.isFinite(afterDuration) || afterDuration <= 0) {
+  if (
+    !Number.isFinite(afterDuration) ||
+    afterDuration <= 0
+  ) {
     return res.status(400).json({
       success: false,
       error: "after_duration must be greater than 0"
     });
   }
 
-  if (!Number.isFinite(transitionDuration) || transitionDuration < 0) {
+  if (
+    !Number.isFinite(transitionDuration) ||
+    transitionDuration < 0
+  ) {
     return res.status(400).json({
       success: false,
       error: "transition_duration must be 0 or greater"
     });
   }
 
-  if (!Number.isFinite(frameRate) || frameRate <= 0) {
+  if (
+    !Number.isFinite(frameRate) ||
+    frameRate <= 0
+  ) {
     return res.status(400).json({
       success: false,
       error: "fps must be greater than 0"
@@ -146,12 +205,17 @@ app.post("/render-prospect-video", async (req, res) => {
   if (transitionDuration >= afterDuration) {
     return res.status(400).json({
       success: false,
-      error: "transition_duration must be shorter than after_duration"
+      error:
+        "transition_duration must be shorter than after_duration"
     });
   }
 
-  const safeBeforeLabel = escapeDrawtext(before_label);
-  const safeAfterLabel = escapeDrawtext(after_label);
+  const safeBeforeLabel =
+    escapeDrawtext(before_label);
+
+  const safeAfterLabel =
+    escapeDrawtext(after_label);
+
   const safeProspectId =
     makeSafePublicId(prospect_id) || "prospect";
 
@@ -159,17 +223,29 @@ app.post("/render-prospect-video", async (req, res) => {
     path.join(os.tmpdir(), "ssp-prospect-")
   );
 
-  const beforePath = path.join(workDir, "before.jpg");
-  const afterPath = path.join(workDir, "after.jpg");
-  const outputPath = path.join(workDir, "prospect.mp4");
+  const beforePath =
+    path.join(workDir, "before.jpg");
+
+  const afterPath =
+    path.join(workDir, "after.jpg");
+
+  const outputPath =
+    path.join(workDir, "prospect.mp4");
 
   try {
     console.log(
       `[PROSPECT VIDEO] Starting render for ${safeProspectId}`
     );
 
-    await downloadFile(before_image_url, beforePath);
-    await downloadFile(after_image_url, afterPath);
+    await downloadFile(
+      before_image_url,
+      beforePath
+    );
+
+    await downloadFile(
+      after_image_url,
+      afterPath
+    );
 
     const beforeFrames =
       Math.round(beforeDuration * frameRate);
@@ -286,23 +362,32 @@ app.post("/render-prospect-video", async (req, res) => {
       }
     );
 
+    // ─────────────────────────────────────────────────────────
+    // UPLOAD VIDEO TO S3
+    // ─────────────────────────────────────────────────────────
+
+    const videoKey =
+      `ssp-prospects/${safeProspectId}/video.mp4`;
+
     const upload =
-      await cloudinary.uploader.upload(
-        outputPath,
-        {
-          resource_type: "video",
-          folder: "ssp-prospects",
-          public_id: safeProspectId,
-          overwrite: true
-        }
-      );
+      await uploadFileToS3({
+        filePath: outputPath,
+        key: videoKey,
+        contentType: "video/mp4"
+      });
+
+    console.log(
+      `[PROSPECT VIDEO] Uploaded to S3: ${upload.key}`
+    );
 
     return res.json({
       success: true,
 
-      video_url: upload.secure_url,
+      video_url: upload.url,
 
-      public_id: upload.public_id,
+      // Kept as public_id for compatibility with GPT/Pabbly.
+      // Value is now the S3 object key.
+      public_id: upload.key,
 
       prospect: {
         prospect_id,
@@ -327,12 +412,16 @@ app.post("/render-prospect-video", async (req, res) => {
   } catch (error) {
     console.error(
       "[PROSPECT VIDEO] Render failed:",
-      error.stderr || error.message || error
+      error.stderr ||
+        error.message ||
+        error
     );
 
     return res.status(500).json({
       success: false,
-      error: error.message
+      error:
+        error.message ||
+        "Prospect video rendering failed"
     });
   } finally {
     try {
@@ -369,17 +458,16 @@ app.post(
       mls_number = ""
     } = req.body || {};
 
-    if (!before_image_url || !after_image_url) {
+    if (
+      !before_image_url ||
+      !after_image_url
+    ) {
       return res.status(400).json({
         success: false,
         error:
           "Missing before_image_url or after_image_url"
       });
     }
-
-    // IMPORTANT:
-    // These variables are initialized BEFORE
-    // the FFmpeg filter is constructed.
 
     const safeBeforeLabel =
       escapeDrawtext(before_label);
@@ -388,20 +476,34 @@ app.post(
       escapeDrawtext(after_label);
 
     const safeProspectId =
-      makeSafePublicId(prospect_id) || "prospect";
+      makeSafePublicId(prospect_id) ||
+      "prospect";
 
-    const workDir = fs.mkdtempSync(
-      path.join(os.tmpdir(), "ssp-thumb-")
-    );
+    const workDir =
+      fs.mkdtempSync(
+        path.join(
+          os.tmpdir(),
+          "ssp-thumb-"
+        )
+      );
 
     const beforePath =
-      path.join(workDir, "before.jpg");
+      path.join(
+        workDir,
+        "before.jpg"
+      );
 
     const afterPath =
-      path.join(workDir, "after.jpg");
+      path.join(
+        workDir,
+        "after.jpg"
+      );
 
     const outputPath =
-      path.join(workDir, "thumbnail.jpg");
+      path.join(
+        workDir,
+        "thumbnail.jpg"
+      );
 
     try {
       console.log(
@@ -442,20 +544,20 @@ app.post(
          color=white@0.95:
          t=fill,
 
-        drawbox=
-x=(w/2)-80:
-y=(h/2)-80:
-w=160:
-h=160:
-color=black@0.45:
-t=fill,
+         drawbox=
+         x=(w/2)-80:
+         y=(h/2)-80:
+         w=160:
+         h=160:
+         color=black@0.45:
+         t=fill,
 
-drawtext=
-text='▶':
-fontcolor=white:
-fontsize=96:
-x=(w-tw)/2+6:
-y=(h-th)/2-4,
+         drawtext=
+         text='▶':
+         fontcolor=white:
+         fontsize=96:
+         x=(w-tw)/2+6:
+         y=(h-th)/2-4,
 
          drawtext=
          text='${safeBeforeLabel}':
@@ -513,28 +615,32 @@ y=(h-th)/2-4,
         }
       );
 
+      // ───────────────────────────────────────────────────────
+      // UPLOAD THUMBNAIL TO S3
+      // ───────────────────────────────────────────────────────
+
+      const thumbnailKey =
+        `ssp-prospects/${safeProspectId}/thumbnail.jpg`;
+
       const upload =
-        await cloudinary.uploader.upload(
-          outputPath,
-          {
-            resource_type: "image",
-            folder: "ssp-prospects",
+        await uploadFileToS3({
+          filePath: outputPath,
+          key: thumbnailKey,
+          contentType: "image/jpeg"
+        });
 
-            public_id:
-              `${safeProspectId}-thumbnail`,
-
-            overwrite: true
-          }
-        );
+      console.log(
+        `[PROSPECT THUMBNAIL] Uploaded to S3: ${upload.key}`
+      );
 
       return res.json({
         success: true,
 
-        image_url:
-          upload.secure_url,
+        image_url: upload.url,
 
-        public_id:
-          upload.public_id,
+        // Kept as public_id for compatibility with GPT/Pabbly.
+        // Value is now the S3 object key.
+        public_id: upload.key,
 
         prospect: {
           prospect_id,
@@ -560,14 +666,19 @@ y=(h-th)/2-4,
 
       return res.status(500).json({
         success: false,
-        error: error.message
+        error:
+          error.message ||
+          "Prospect thumbnail rendering failed"
       });
     } finally {
       try {
-        fs.rmSync(workDir, {
-          recursive: true,
-          force: true
-        });
+        fs.rmSync(
+          workDir,
+          {
+            recursive: true,
+            force: true
+          }
+        );
       } catch (cleanupError) {
         console.error(
           "[PROSPECT THUMBNAIL] Cleanup failed:",
@@ -585,5 +696,15 @@ y=(h-th)/2-4,
 app.listen(PORT, () => {
   console.log(
     `SSP Prospect Video Renderer listening on port ${PORT}`
+  );
+
+  console.log(
+    `[S3] Region: ${AWS_REGION}`
+  );
+
+  console.log(
+    `[S3] Bucket: ${
+      AWS_S3_BUCKET || "NOT CONFIGURED"
+    }`
   );
 });
