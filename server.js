@@ -7,7 +7,10 @@ const os = require("os");
 const path = require("path");
 const { execFile } = require("child_process");
 const { promisify } = require("util");
-const cloudinary = require("cloudinary").v2;
+const {
+  S3Client,
+  PutObjectCommand
+} = require("@aws-sdk/client-s3");
 
 const execFileAsync = promisify(execFile);
 
@@ -17,13 +20,14 @@ app.use(express.json({ limit: "5mb" }));
 const PORT = process.env.PORT || 3000;
 
 // ─────────────────────────────────────────────────────────────
-// CLOUDINARY
+// AWS S3
 // ─────────────────────────────────────────────────────────────
 
-cloudinary.config({
-  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
-  api_key: process.env.CLOUDINARY_API_KEY,
-  api_secret: process.env.CLOUDINARY_API_SECRET
+const AWS_REGION = process.env.AWS_REGION || "us-east-2";
+const AWS_S3_BUCKET = process.env.AWS_S3_BUCKET;
+
+const s3 = new S3Client({
+  region: AWS_REGION
 });
 
 // ─────────────────────────────────────────────────────────────
