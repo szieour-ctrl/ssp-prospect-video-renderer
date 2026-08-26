@@ -52,18 +52,36 @@ async function downloadFile(url, outputPath) {
   const response = await axios({
     method: "GET",
     url,
-    responseType: "stream",
-    timeout: 30000
+    responseType: "arraybuffer",
+    timeout: 30000,
+    maxRedirects: 5,
+    validateStatus: status =>
+      status >= 200 && status < 300
   });
 
-  await new Promise((resolve, reject) => {
-    const writer = fs.createWriteStream(outputPath);
+  const contentType =
+    response.headers["content-type"] || "";
 
-    response.data.pipe(writer);
+  if (!contentType.startsWith("image/")) {
+    throw new Error(
+      `Expected image but received ${
+        contentType || "unknown content type"
+      } from ${url}`
+    );
+  }
 
-    writer.on("finish", resolve);
-    writer.on("error", reject);
-  });
+  const buffer = Buffer.from(response.data);
+
+  if (buffer.length < 1000) {
+    throw new Error(
+      `Downloaded image is unexpectedly small: ${buffer.length} bytes`
+    );
+  }
+
+  await fs.promises.writeFile(
+    outputPath,
+    buffer
+  );
 }
 
 function escapeDrawtext(value) {
@@ -317,54 +335,38 @@ app.post("/render-prospect-video", async (req, res) => {
       "ffmpeg",
       [
         "-y",
-
         "-loop",
         "1",
         "-i",
         beforePath,
-
         "-loop",
         "1",
         "-i",
         afterPath,
-
         "-filter_complex",
         filter,
-
         "-map",
         "[outv]",
-
         "-t",
         String(outputDuration),
-
         "-c:v",
         "libx264",
-
         "-preset",
         "medium",
-
         "-crf",
         "18",
-
         "-pix_fmt",
         "yuv420p",
-
         "-movflags",
         "+faststart",
-
         "-r",
         String(frameRate),
-
         outputPath
       ],
       {
         maxBuffer: 20 * 1024 * 1024
       }
     );
-
-    // ─────────────────────────────────────────────────────────
-    // UPLOAD VIDEO TO S3
-    // ─────────────────────────────────────────────────────────
 
     const videoKey =
       `ssp-prospects/${safeProspectId}/video.mp4`;
@@ -382,11 +384,7 @@ app.post("/render-prospect-video", async (req, res) => {
 
     return res.json({
       success: true,
-
       video_url: upload.url,
-
-      // Kept as public_id for compatibility with GPT/Pabbly.
-      // Value is now the S3 object key.
       public_id: upload.key,
 
       prospect: {
@@ -588,25 +586,18 @@ app.post(
         "ffmpeg",
         [
           "-y",
-
           "-i",
           beforePath,
-
           "-i",
           afterPath,
-
           "-filter_complex",
           filter,
-
           "-map",
           "[out]",
-
           "-frames:v",
           "1",
-
           "-q:v",
           "2",
-
           outputPath
         ],
         {
@@ -614,10 +605,6 @@ app.post(
             20 * 1024 * 1024
         }
       );
-
-      // ───────────────────────────────────────────────────────
-      // UPLOAD THUMBNAIL TO S3
-      // ───────────────────────────────────────────────────────
 
       const thumbnailKey =
         `ssp-prospects/${safeProspectId}/thumbnail.jpg`;
@@ -635,11 +622,7 @@ app.post(
 
       return res.json({
         success: true,
-
         image_url: upload.url,
-
-        // Kept as public_id for compatibility with GPT/Pabbly.
-        // Value is now the S3 object key.
         public_id: upload.key,
 
         prospect: {
