@@ -1,6 +1,6 @@
 {
   "name": "ssp-prospect-video-renderer",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Standalone Smart Stage PRO prospecting video renderer",
   "main": "server.js",
   "scripts": {
@@ -10,8 +10,8 @@
     "node": ">=20"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.0.0",
     "axios": "^1.11.0",
-    "cloudinary": "^2.7.0",
     "dotenv": "^17.2.1",
     "express": "^5.1.0",
     "fluent-ffmpeg": "^2.1.3"
