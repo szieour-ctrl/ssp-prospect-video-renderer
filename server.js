@@ -387,9 +387,9 @@ app.post(
          pad=1920:1080:(ow-iw)/2:(oh-ih)/2,
          setsar=1,
          zoompan=
-         z='min(zoom+0.00014,1.045)':
-         x='(iw-iw/zoom)*(0.43+0.12*(on/${afterFrames}))':
-         y='(ih-ih/zoom)*(0.47+0.05*(on/${afterFrames}))':
+         z='min(zoom+0.00012,1.04)':
+         x='iw/2-(iw/zoom/2)':
+         y='ih/2-(ih/zoom/2)':
          d=${afterFrames}:
          s=1920x1080:
          fps=${frameRate},
