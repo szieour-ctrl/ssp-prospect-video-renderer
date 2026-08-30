@@ -191,8 +191,8 @@ app.post(
       before_image_url,
       after_image_url,
 
-      before_duration = 6,
-      after_duration = 8,
+      before_duration = 3,
+      after_duration = 11,
       transition_duration = 1,
       transition = "wipeleft",
       fps = 30,
@@ -365,7 +365,7 @@ app.post(
          pad=1920:1080:(ow-iw)/2:(oh-ih)/2,
          setsar=1,
          zoompan=
-         z='min(zoom+0.0007,1.05)':
+         z='min(zoom+0.00012,1.012)':
          x='iw/2-(iw/zoom/2)':
          y='ih/2-(ih/zoom/2)':
          d=${beforeFrames}:
@@ -387,9 +387,9 @@ app.post(
          pad=1920:1080:(ow-iw)/2:(oh-ih)/2,
          setsar=1,
          zoompan=
-         z='min(zoom+0.0003,1.02)':
-         x='iw/2-(iw/zoom/2)':
-         y='ih/2-(ih/zoom/2)':
+         z='min(zoom+0.00014,1.045)':
+         x='(iw-iw/zoom)*(0.43+0.12*(on/${afterFrames}))':
+         y='(ih-ih/zoom)*(0.47+0.05*(on/${afterFrames}))':
          d=${afterFrames}:
          s=1920x1080:
          fps=${frameRate},
