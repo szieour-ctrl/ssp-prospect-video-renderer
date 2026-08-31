@@ -24,8 +24,11 @@ const PORT = process.env.PORT || 3000;
 // AWS S3
 // ─────────────────────────────────────────────────────────────
 
-const AWS_REGION = process.env.AWS_REGION || "us-east-2";
-const AWS_S3_BUCKET = process.env.AWS_S3_BUCKET;
+const AWS_REGION =
+  process.env.AWS_REGION || "us-east-2";
+
+const AWS_S3_BUCKET =
+  process.env.AWS_S3_BUCKET;
 
 const s3 = new S3Client({
   region: AWS_REGION
@@ -48,7 +51,10 @@ app.get("/health", (req, res) => {
 // HELPERS
 // ─────────────────────────────────────────────────────────────
 
-async function downloadFile(url, outputPath) {
+async function downloadFile(
+  url,
+  outputPath
+) {
   const response = await axios({
     method: "GET",
     url,
@@ -56,21 +62,26 @@ async function downloadFile(url, outputPath) {
     timeout: 30000,
     maxRedirects: 5,
     validateStatus: status =>
-      status >= 200 && status < 300
+      status >= 200 &&
+      status < 300
   });
 
   const contentType =
     response.headers["content-type"] || "";
 
-  if (!contentType.startsWith("image/")) {
+  if (
+    !contentType.startsWith("image/")
+  ) {
     throw new Error(
       `Expected image but received ${
-        contentType || "unknown content type"
+        contentType ||
+        "unknown content type"
       } from ${url}`
     );
   }
 
-  const buffer = Buffer.from(response.data);
+  const buffer =
+    Buffer.from(response.data);
 
   if (buffer.length < 1000) {
     throw new Error(
@@ -93,14 +104,21 @@ function escapeDrawtext(value) {
 }
 
 function makeSafePublicId(value) {
-  return String(value || "prospect")
+  return String(
+    value || "prospect"
+  )
     .toLowerCase()
-    .replace(/[^a-z0-9-_]/g, "-")
+    .replace(
+      /[^a-z0-9-_]/g,
+      "-"
+    )
     .replace(/-+/g, "-")
     .replace(/^-|-$/g, "");
 }
 
-function makeSafeStreetAddress(propertyAddress) {
+function makeSafeStreetAddress(
+  propertyAddress
+) {
   if (!propertyAddress) {
     return "";
   }
@@ -112,7 +130,10 @@ function makeSafeStreetAddress(propertyAddress) {
 
   return streetOnly
     .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
+    .replace(
+      /[^a-z0-9]+/g,
+      "-"
+    )
     .replace(/-+/g, "-")
     .replace(/^-|-$/g, "");
 }
@@ -122,11 +143,14 @@ function makeProspectFolder(
   propertyAddress
 ) {
   const safeProspectId =
-    makeSafePublicId(prospectId) ||
-    "prospect";
+    makeSafePublicId(
+      prospectId
+    ) || "prospect";
 
   const safeStreetAddress =
-    makeSafeStreetAddress(propertyAddress);
+    makeSafeStreetAddress(
+      propertyAddress
+    );
 
   if (!safeStreetAddress) {
     return safeProspectId;
@@ -146,7 +170,11 @@ function ensureS3Configured() {
 function encodeS3Key(key) {
   return key
     .split("/")
-    .map(segment => encodeURIComponent(segment))
+    .map(segment =>
+      encodeURIComponent(
+        segment
+      )
+    )
     .join("/");
 }
 
@@ -165,17 +193,29 @@ async function uploadFileToS3({
 
   await s3.send(
     new PutObjectCommand({
-      Bucket: AWS_S3_BUCKET,
-      Key: key,
-      Body: fs.createReadStream(filePath),
-      ContentType: contentType,
+      Bucket:
+        AWS_S3_BUCKET,
+
+      Key:
+        key,
+
+      Body:
+        fs.createReadStream(
+          filePath
+        ),
+
+      ContentType:
+        contentType,
+
       CacheControl:
         "public, max-age=31536000"
     })
   );
 
   return {
-    url: buildS3Url(key),
+    url:
+      buildS3Url(key),
+
     key
   };
 }
@@ -203,55 +243,84 @@ app.post(
       after_label =
         "SMART STAGE PRO PREVIEW",
 
-      prospect_id = "prospect",
-      agent_name = "",
-      property_address = "",
-      mls_number = ""
+      prospect_id =
+        "prospect",
+
+      agent_name =
+        "",
+
+      property_address =
+        "",
+
+      mls_number =
+        ""
     } = req.body || {};
 
     if (
       !before_image_url ||
       !after_image_url
     ) {
-      return res.status(400).json({
-        success: false,
-        error:
-          "Missing before_image_url or after_image_url"
-      });
+      return res
+        .status(400)
+        .json({
+          success:
+            false,
+
+          error:
+            "Missing before_image_url or after_image_url"
+        });
     }
 
     const beforeDuration =
-      Number(before_duration);
+      Number(
+        before_duration
+      );
 
     const afterDuration =
-      Number(after_duration);
+      Number(
+        after_duration
+      );
 
     const transitionDuration =
-      Number(transition_duration);
+      Number(
+        transition_duration
+      );
 
     const frameRate =
       Number(fps);
 
     if (
-      !Number.isFinite(beforeDuration) ||
+      !Number.isFinite(
+        beforeDuration
+      ) ||
       beforeDuration <= 0
     ) {
-      return res.status(400).json({
-        success: false,
-        error:
-          "before_duration must be greater than 0"
-      });
+      return res
+        .status(400)
+        .json({
+          success:
+            false,
+
+          error:
+            "before_duration must be greater than 0"
+        });
     }
 
     if (
-      !Number.isFinite(afterDuration) ||
+      !Number.isFinite(
+        afterDuration
+      ) ||
       afterDuration <= 0
     ) {
-      return res.status(400).json({
-        success: false,
-        error:
-          "after_duration must be greater than 0"
-      });
+      return res
+        .status(400)
+        .json({
+          success:
+            false,
+
+          error:
+            "after_duration must be greater than 0"
+        });
     }
 
     if (
@@ -260,40 +329,58 @@ app.post(
       ) ||
       transitionDuration < 0
     ) {
-      return res.status(400).json({
-        success: false,
-        error:
-          "transition_duration must be 0 or greater"
-      });
+      return res
+        .status(400)
+        .json({
+          success:
+            false,
+
+          error:
+            "transition_duration must be 0 or greater"
+        });
     }
 
     if (
-      !Number.isFinite(frameRate) ||
+      !Number.isFinite(
+        frameRate
+      ) ||
       frameRate <= 0
     ) {
-      return res.status(400).json({
-        success: false,
-        error:
-          "fps must be greater than 0"
-      });
+      return res
+        .status(400)
+        .json({
+          success:
+            false,
+
+          error:
+            "fps must be greater than 0"
+        });
     }
 
     if (
       transitionDuration >=
       afterDuration
     ) {
-      return res.status(400).json({
-        success: false,
-        error:
-          "transition_duration must be shorter than after_duration"
-      });
+      return res
+        .status(400)
+        .json({
+          success:
+            false,
+
+          error:
+            "transition_duration must be shorter than after_duration"
+        });
     }
 
     const safeBeforeLabel =
-      escapeDrawtext(before_label);
+      escapeDrawtext(
+        before_label
+      );
 
     const safeAfterLabel =
-      escapeDrawtext(after_label);
+      escapeDrawtext(
+        after_label
+      );
 
     const prospectFolder =
       makeProspectFolder(
@@ -359,11 +446,33 @@ app.post(
         afterDuration -
         transitionDuration;
 
+      // ───────────────────────────────────────────────────────
+      // STAGED IMAGE KEN BURNS
+      //
+      // Same basic motion profile as PRO Plus:
+      //
+      // start_zoom = 1.0
+      // max_zoom   = 1.5
+      // duration   = 6 seconds
+      //
+      // Smoothstep ease-in/ease-out:
+      //
+      // t = min(frame / (6 * fps), 1)
+      // ease = 3t² - 2t³
+      // zoom = 1 + 0.5 * ease
+      //
+      // Once t reaches 1, zoom remains at 1.5.
+      // ───────────────────────────────────────────────────────
+
+      const kenBurnsFrames =
+        6 * frameRate;
+
       const filter = [
         `[0:v]
          scale=1920:1080:force_original_aspect_ratio=decrease,
          pad=1920:1080:(ow-iw)/2:(oh-ih)/2,
          setsar=1,
+
          zoompan=
          z='min(zoom+0.00012,1.012)':
          x='iw/2-(iw/zoom/2)':
@@ -371,6 +480,7 @@ app.post(
          d=${beforeFrames}:
          s=1920x1080:
          fps=${frameRate},
+
          drawtext=
          text='${safeBeforeLabel}':
          fontcolor=white:
@@ -380,19 +490,22 @@ app.post(
          boxborderw=18:
          x=60:
          y=h-th-60
+
          [beforev]`,
 
         `[1:v]
          scale=1920:1080:force_original_aspect_ratio=decrease,
          pad=1920:1080:(ow-iw)/2:(oh-ih)/2,
          setsar=1,
+
          zoompan=
-         z='min(zoom+0.00012,1.04)':
+         z='1+0.5*(3*pow(min(on/${kenBurnsFrames},1),2)-2*pow(min(on/${kenBurnsFrames},1),3))':
          x='iw/2-(iw/zoom/2)':
          y='ih/2-(ih/zoom/2)':
          d=${afterFrames}:
          s=1920x1080:
          fps=${frameRate},
+
          drawtext=
          text='${safeAfterLabel}':
          fontcolor=white:
@@ -402,6 +515,7 @@ app.post(
          boxborderw=18:
          x=60:
          y=h-th-60
+
          [afterv]`,
 
         `[beforev][afterv]
@@ -409,6 +523,7 @@ app.post(
          transition=${transition}:
          duration=${transitionDuration}:
          offset=${beforeDuration}
+
          [outv]`
       ]
         .join(";")
@@ -459,7 +574,9 @@ app.post(
           "+faststart",
 
           "-r",
-          String(frameRate),
+          String(
+            frameRate
+          ),
 
           outputPath
         ],
@@ -478,8 +595,10 @@ app.post(
         await uploadFileToS3({
           filePath:
             outputPath,
+
           key:
             videoKey,
+
           contentType:
             "video/mp4"
         });
@@ -489,7 +608,8 @@ app.post(
       );
 
       return res.json({
-        success: true,
+        success:
+          true,
 
         video_url:
           upload.url,
@@ -526,6 +646,18 @@ app.post(
           output_duration:
             outputDuration,
 
+          staged_motion:
+            "ken_burns_push_in",
+
+          ken_burns_duration:
+            6,
+
+          ken_burns_start_zoom:
+            1.0,
+
+          ken_burns_end_zoom:
+            1.5,
+
           width:
             1920,
 
@@ -558,6 +690,7 @@ app.post(
           {
             recursive:
               true,
+
             force:
               true
           }
