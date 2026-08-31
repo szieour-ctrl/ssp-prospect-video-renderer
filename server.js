@@ -499,7 +499,7 @@ app.post(
          setsar=1,
 
          zoompan=
-         z='1+0.5*(3*pow(min(on/${kenBurnsFrames},1),2)-2*pow(min(on/${kenBurnsFrames},1),3))':
+         z='1+0.35*(3*pow(min(on/${kenBurnsFrames},1),2)-2*pow(min(on/${kenBurnsFrames},1),3))':
          x='iw/2-(iw/zoom/2)':
          y='ih/2-(ih/zoom/2)':
          d=${afterFrames}:
