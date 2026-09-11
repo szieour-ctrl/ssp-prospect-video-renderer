@@ -122,14 +122,7 @@ function buildMotionFilter({ start_zoom, end_zoom, start_x, end_x, start_y, end_
   const xDelta = end_x - start_x;
   const yDelta = end_y - start_y;
 
-  return [
-    `[0:v]`,
-    `scale=3840:2160:force_original_aspect_ratio=increase`,
-    `crop=3840:2160`,
-    `setsar=1`,
-    `zoompan=z='${start_zoom}+${zoomDelta}*${progress}':x='(iw-iw/zoom)*(${start_x}+${xDelta}*${progress})':y='(ih-ih/zoom)*(${start_y}+${yDelta}*${progress})':d=${frames}:s=1920x1080:fps=${fps}`,
-    `[outv]`
-  ].join(",");
+  return `[0:v]scale=3840:2160:force_original_aspect_ratio=increase,crop=3840:2160,setsar=1,zoompan=z='${start_zoom}+${zoomDelta}*${progress}':x='(iw-iw/zoom)*(${start_x}+${xDelta}*${progress})':y='(ih-ih/zoom)*(${start_y}+${yDelta}*${progress})':d=${frames}:s=1920x1080:fps=${fps}[outv]`;
 }
 
 async function renderMotionClip(params) {
@@ -224,7 +217,24 @@ app.post("/test-cinematic-motion", async (req, res) => {
 
   try {
     const upload = await renderMotionClip(params);
-    return res.json({ success: true, video_url: upload.url, public_id: upload.key, render: { route: "/test-cinematic-motion", preset, ...params, image_url: undefined } });
+    return res.json({
+      success: true,
+      video_url: upload.url,
+      public_id: upload.key,
+      render: {
+        route: "/test-cinematic-motion",
+        preset,
+        duration: params.duration,
+        fps: params.fps,
+        easing: params.easing,
+        start_zoom: params.start_zoom,
+        end_zoom: params.end_zoom,
+        start_focal_position: { x: params.start_x, y: params.start_y },
+        end_focal_position: { x: params.end_x, y: params.end_y },
+        width: 1920,
+        height: 1080
+      }
+    });
   } catch (error) {
     console.error("[RND PRESET] Render failed:", error.stderr || error.message || error);
     return res.status(500).json({ success: false, error: error.message || "Preset render failed" });
