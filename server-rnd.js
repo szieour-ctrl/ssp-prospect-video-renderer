@@ -18,7 +18,7 @@ const AWS_REGION = process.env.AWS_REGION || "us-east-2";
 const AWS_S3_BUCKET = process.env.AWS_S3_BUCKET;
 
 const SERVICE_NAME = "ssp-luxury-parallax-pivot-rnd";
-const SERVICE_VERSION = "0.2.0";
+const SERVICE_VERSION = "0.3.0";
 
 const s3 = new S3Client({ region: AWS_REGION });
 
@@ -221,8 +221,8 @@ function validatePivotMotion({
     return "pivot_side must be left or right";
   }
 
-  if (pivot_strength < 0 || pivot_strength > 0.08) {
-    return "pivot_strength must be between 0 and 0.08";
+  if (pivot_strength < 0 || pivot_strength > 0.15) {
+    return "pivot_strength must be between 0 and 0.15";
   }
 
   if (vertical_spread < 0 || vertical_spread > 1) {
@@ -296,23 +296,24 @@ function buildLuxuryPivotFilter({
     frames - 1;
 
   /*
-    Luxury Parallax + Pivot v1
+    Luxury Parallax + Pivot v2
 
-    t_in = ease_in(t)
-    zoom = start_zoom + zoom_delta * t_in
-
-    overscan = 1 - 1 / zoom
-    drift = overscan * drift_strength
-
-    pan_x = drift * t_in
-    pan_y = -drift * vertical_drift_ratio * t_in
-
-    pivot = overscan * pivot_strength * t_in
+    Key changes:
+    - Pivot is driven directly by normalized time.
+    - Pivot is NOT suppressed by overscan.
+    - FFmpeg perspective uses sense=destination.
+    - The locked side remains fixed.
+    - The opposite edge compresses inward to create
+      a visible trapezoidal / rotational cue.
   */
 
   const t =
     `min(on/${lastFrame},1)`;
 
+  /*
+    Preserve the existing Luxury Parallax ease-in
+    behavior for zoom and drift.
+  */
   const tIn =
     `pow(${t},2)`;
 
@@ -331,70 +332,122 @@ function buildLuxuryPivotFilter({
   const panY =
     `(-${drift}*${vertical_drift_ratio}*${tIn})`;
 
+  /*
+    Direct pivot:
+    pivot_strength now represents approximate
+    final geometric deformation.
+
+    Example:
+    0.10 = approximately 10% edge movement.
+  */
   const pivot =
-    `(${overscan}*${pivot_strength}*${tIn})`;
+    `(${pivot_strength}*${t})`;
 
   const W = 3840;
   const H = 2160;
 
-  let x0 = "0";
-  let y0 = "0";
-
-  let x1 = String(W);
-  let y1 = "0";
-
-  let x2 = "0";
-  let y2 = String(H);
-
-  let x3 = String(W);
-  let y3 = String(H);
+  let x0;
+  let y0;
+  let x1;
+  let y1;
+  let x2;
+  let y2;
+  let x3;
+  let y3;
 
   if (pivot_side === "left") {
     /*
-      Left edge is the visual hinge.
+      LEFT LOCK
 
-      Right side expands outward.
+      Left side stays planted.
+      Right edge compresses inward.
+
+      Start:
+      +------------------+
+      |                  |
+      |                  |
+      |                  |
+      +------------------+
+
+      End:
+      +--------------+
+      |             /
+      |            /
+      |            \
+      |             \
+      +--------------+
     */
 
+    // top-left locked
+    x0 = "0";
+    y0 = "0";
+
+    // top-right moves left and downward
     x1 =
-      `${W}+${W}*${pivot}`;
+      `${W}-${W}*${pivot}`;
 
     y1 =
-      `0-${H}*${pivot}*${vertical_spread}`;
+      `${H}*${pivot}*${vertical_spread}`;
 
+    // bottom-left locked
+    x2 = "0";
+    y2 = String(H);
+
+    // bottom-right moves left and upward
     x3 =
-      `${W}+${W}*${pivot}`;
+      `${W}-${W}*${pivot}`;
 
     y3 =
-      `${H}+${H}*${pivot}*${vertical_spread}`;
+      `${H}-${H}*${pivot}*${vertical_spread}`;
   } else {
     /*
-      Right edge is the visual hinge.
+      RIGHT LOCK
 
-      Left side expands outward.
+      Right side stays planted.
+      Left edge compresses inward.
     */
 
+    // top-left moves right and downward
     x0 =
-      `0-${W}*${pivot}`;
+      `${W}*${pivot}`;
 
     y0 =
-      `0-${H}*${pivot}*${vertical_spread}`;
+      `${H}*${pivot}*${vertical_spread}`;
 
+    // top-right locked
+    x1 = String(W);
+    y1 = "0";
+
+    // bottom-left moves right and upward
     x2 =
-      `0-${W}*${pivot}`;
+      `${W}*${pivot}`;
 
     y2 =
-      `${H}+${H}*${pivot}*${vertical_spread}`;
+      `${H}-${H}*${pivot}*${vertical_spread}`;
+
+    // bottom-right locked
+    x3 = String(W);
+    y3 = String(H);
   }
 
   return (
     `[0:v]` +
 
+    /*
+      Working canvas / overscan.
+    */
     `scale=4200:2363:force_original_aspect_ratio=increase,` +
     `crop=4200:2363,` +
     `setsar=1,` +
+
+    /*
+      Standard perspective canvas.
+    */
     `crop=3840:2160,` +
 
+    /*
+      Perspective Pivot.
+    */
     `perspective=` +
     `x0='${x0}':` +
     `y0='${y0}':` +
@@ -404,9 +457,13 @@ function buildLuxuryPivotFilter({
     `y2='${y2}':` +
     `x3='${x3}':` +
     `y3='${y3}':` +
+    `sense=destination:` +
     `eval=frame:` +
     `interpolation=linear,` +
 
+    /*
+      Luxury Parallax zoom + drift after pivot.
+    */
     `zoompan=` +
     `z='${zoom}':` +
     `x='(iw-iw/zoom)*(0.5+${panX})':` +
