@@ -708,6 +708,340 @@ app.post(
 );
 
 // ─────────────────────────────────────────────────────────────
+// TEST: CINEMATIC STILL-IMAGE MOTION
+//
+// Separate from /render-prospect-video so production behavior
+// remains unchanged while motion presets are evaluated.
+// ─────────────────────────────────────────────────────────────
+
+app.post(
+  "/test-cinematic-motion",
+  async (req, res) => {
+    const {
+      image_url,
+      preset = "cinematic_push_right",
+      duration = 5,
+      fps = 30,
+      prospect_id = "motion-test",
+      property_address = ""
+    } = req.body || {};
+
+    const presets = {
+      cinematic_push_right: {
+        start_zoom: 1.02,
+        end_zoom: 1.30,
+        start_x: 0.34,
+        end_x: 0.62,
+        start_y: 0.55,
+        end_y: 0.48
+      }
+    };
+
+    if (!image_url) {
+      return res
+        .status(400)
+        .json({
+          success: false,
+          error: "Missing image_url"
+        });
+    }
+
+    if (!presets[preset]) {
+      return res
+        .status(400)
+        .json({
+          success: false,
+          error:
+            `Unknown preset "${preset}". Available presets: ${Object.keys(
+              presets
+            ).join(", ")}`
+        });
+    }
+
+    const motionDuration =
+      Number(duration);
+
+    const frameRate =
+      Number(fps);
+
+    if (
+      !Number.isFinite(
+        motionDuration
+      ) ||
+      motionDuration <= 0
+    ) {
+      return res
+        .status(400)
+        .json({
+          success: false,
+          error:
+            "duration must be greater than 0"
+        });
+    }
+
+    if (
+      !Number.isFinite(
+        frameRate
+      ) ||
+      frameRate <= 0
+    ) {
+      return res
+        .status(400)
+        .json({
+          success: false,
+          error:
+            "fps must be greater than 0"
+        });
+    }
+
+    const motion =
+      presets[preset];
+
+    const prospectFolder =
+      makeProspectFolder(
+        prospect_id,
+        property_address
+      );
+
+    const workDir =
+      fs.mkdtempSync(
+        path.join(
+          os.tmpdir(),
+          "ssp-motion-test-"
+        )
+      );
+
+    const inputPath =
+      path.join(
+        workDir,
+        "input.jpg"
+      );
+
+    const outputPath =
+      path.join(
+        workDir,
+        "motion-test.mp4"
+      );
+
+    try {
+      console.log(
+        `[MOTION TEST] Starting ${preset} for ${prospectFolder}`
+      );
+
+      await downloadFile(
+        image_url,
+        inputPath
+      );
+
+      const motionFrames =
+        Math.max(
+          2,
+          Math.round(
+            motionDuration *
+              frameRate
+          )
+        );
+
+      const lastFrame =
+        motionFrames - 1;
+
+      const zoomDelta =
+        motion.end_zoom -
+        motion.start_zoom;
+
+      const xDelta =
+        motion.end_x -
+        motion.start_x;
+
+      const yDelta =
+        motion.end_y -
+        motion.start_y;
+
+      // Keep the source oversized before zoompan so a 1080p
+      // output has enough pixel headroom for the 1.30x crop.
+      //
+      // Unlike the production centered Ken Burns effect, this
+      // preset changes scale AND crop position continuously.
+      // The linear envelope deliberately avoids a pronounced
+      // ease-out so the shot is still moving at the cut.
+      const filter = [
+        `[0:v]
+         scale=3840:2160:force_original_aspect_ratio=increase,
+         crop=3840:2160,
+         setsar=1,
+
+         zoompan=
+         z='${motion.start_zoom}+${zoomDelta}*min(on/${lastFrame},1)':
+         x='(iw-iw/zoom)*(${motion.start_x}+${xDelta}*min(on/${lastFrame},1))':
+         y='(ih-ih/zoom)*(${motion.start_y}+${yDelta}*min(on/${lastFrame},1))':
+         d=${motionFrames}:
+         s=1920x1080:
+         fps=${frameRate}
+
+         [outv]`
+      ]
+        .join(";")
+        .replace(
+          /\s*\n\s*/g,
+          ""
+        );
+
+      await execFileAsync(
+        "ffmpeg",
+        [
+          "-y",
+
+          "-loop",
+          "1",
+          "-i",
+          inputPath,
+
+          "-filter_complex",
+          filter,
+
+          "-map",
+          "[outv]",
+
+          "-t",
+          String(
+            motionDuration
+          ),
+
+          "-c:v",
+          "libx264",
+
+          "-preset",
+          "medium",
+
+          "-crf",
+          "18",
+
+          "-pix_fmt",
+          "yuv420p",
+
+          "-movflags",
+          "+faststart",
+
+          "-r",
+          String(
+            frameRate
+          ),
+
+          outputPath
+        ],
+        {
+          maxBuffer:
+            20 *
+            1024 *
+            1024
+        }
+      );
+
+      const videoKey =
+        `ssp-prospects/${prospectFolder}/tests/${preset}.mp4`;
+
+      const upload =
+        await uploadFileToS3({
+          filePath:
+            outputPath,
+
+          key:
+            videoKey,
+
+          contentType:
+            "video/mp4"
+        });
+
+      console.log(
+        `[MOTION TEST] Uploaded to S3: ${upload.key}`
+      );
+
+      return res.json({
+        success: true,
+
+        video_url:
+          upload.url,
+
+        public_id:
+          upload.key,
+
+        render: {
+          route:
+            "/test-cinematic-motion",
+
+          preset,
+
+          duration:
+            motionDuration,
+
+          fps:
+            frameRate,
+
+          start_zoom:
+            motion.start_zoom,
+
+          end_zoom:
+            motion.end_zoom,
+
+          start_focal_position: {
+            x:
+              motion.start_x,
+            y:
+              motion.start_y
+          },
+
+          end_focal_position: {
+            x:
+              motion.end_x,
+            y:
+              motion.end_y
+          },
+
+          width:
+            1920,
+
+          height:
+            1080
+        }
+      });
+    } catch (error) {
+      console.error(
+        "[MOTION TEST] Render failed:",
+        error.stderr ||
+          error.message ||
+          error
+      );
+
+      return res
+        .status(500)
+        .json({
+          success: false,
+          error:
+            error.message ||
+            "Cinematic motion test render failed"
+        });
+    } finally {
+      try {
+        fs.rmSync(
+          workDir,
+          {
+            recursive: true,
+            force: true
+          }
+        );
+      } catch (
+        cleanupError
+      ) {
+        console.error(
+          "[MOTION TEST] Cleanup failed:",
+          cleanupError.message
+        );
+      }
+    }
+  }
+);
+
+// ─────────────────────────────────────────────────────────────
 // PROSPECT EMAIL THUMBNAIL
 // MATCHED FILL + CENTER CROP
 // ─────────────────────────────────────────────────────────────
