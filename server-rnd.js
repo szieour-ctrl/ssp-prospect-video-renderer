@@ -19,7 +19,7 @@ const AWS_REGION = process.env.AWS_REGION || "us-east-2";
 const AWS_S3_BUCKET = process.env.AWS_S3_BUCKET;
 
 const SERVICE_NAME = "ssp-ken-burns-rnd";
-const SERVICE_VERSION = "0.3.0";
+const SERVICE_VERSION = "0.4.0";
 
 const s3 = new S3Client({
   region: AWS_REGION
@@ -287,40 +287,28 @@ async function renderMotionClipToFile({
     "ffmpeg",
     [
       "-y",
-
       "-loop",
       "1",
-
       "-i",
       inputPath,
-
       "-filter_complex",
       filter,
-
       "-map",
       "[outv]",
-
       "-t",
       String(params.duration),
-
       "-c:v",
       "libx264",
-
       "-preset",
       "medium",
-
       "-crf",
       "18",
-
       "-pix_fmt",
       "yuv420p",
-
       "-movflags",
       "+faststart",
-
       "-r",
       String(params.fps),
-
       outputPath
     ],
     {
@@ -403,37 +391,87 @@ async function renderMotionClip(params) {
 }
 
 // ─────────────────────────────────────────────────────────────
-// ATOMIC COMPOUND MOVEMENTS
+// ATOMIC MOVEMENTS
+//
+// x/y use the existing normalized zoompan crop coordinates.
 //
 // IMPORTANT:
-//
-// x/y here are crop-position travel, not object coordinates.
-//
-// Segment 2 always starts from segment 1's exact final state.
-// This is the visual-continuity seam contract.
-//
-// Direction-change motions deliberately HOLD zoom so the second
-// movement reads as a real pan/tilt rather than another diagonal
-// zoom.
+// Every next segment begins at the exact end zoom/x/y of the
+// prior segment.
 // ─────────────────────────────────────────────────────────────
 
 const ATOMIC_MOTIONS = {
 
-  hold: {
-    label: "Hold",
-    zoom_delta: 0.04,
+  // ─────────────────────────────────────────────────────────
+  // SPEED-RAMP FAMILY
+  // ─────────────────────────────────────────────────────────
+
+  low_push: {
+    label: "Low Push",
+    zoom_delta: 0.07,
     x_delta: 0.00,
     y_delta: 0.00,
     easing: "smoothstep"
   },
 
-  gentle_push: {
-    label: "Gentle Push",
-    zoom_delta: 0.10,
+  // This is intentionally NOT static.
+  //
+  // During the "hold" beat, the image remains alive:
+  // a tiny zoom creep + tiny diagonal float.
+  //
+  // It should feel like the camera breathes while the viewer
+  // registers the staged room.
+  float_hold: {
+    label: "Float",
+    zoom_delta: 0.015,
+    x_delta: 0.012,
+    y_delta: -0.008,
+    easing: "smoothstep"
+  },
+
+  fast_push: {
+    label: "Fast Push",
+    zoom_delta: 0.18,
     x_delta: 0.00,
     y_delta: 0.00,
     easing: "smoothstep"
   },
+
+  fast_push_strong: {
+    label: "Fast Push Strong",
+    zoom_delta: 0.24,
+    x_delta: 0.00,
+    y_delta: 0.00,
+    easing: "smoothstep"
+  },
+
+  fast_diagonal_settle: {
+    label: "Fast Diagonal Settle",
+    zoom_delta: 0.10,
+    x_delta: 0.18,
+    y_delta: -0.12,
+    easing: "smoothstep"
+  },
+
+  fast_diagonal_settle_soft: {
+    label: "Fast Diagonal Settle Soft",
+    zoom_delta: 0.08,
+    x_delta: 0.14,
+    y_delta: -0.09,
+    easing: "smoothstep"
+  },
+
+  fast_push_diagonal: {
+    label: "Fast Push Diagonal",
+    zoom_delta: 0.15,
+    x_delta: 0.14,
+    y_delta: -0.08,
+    easing: "smoothstep"
+  },
+
+  // ─────────────────────────────────────────────────────────
+  // DIRECTION-CHANGE FAMILY
+  // ─────────────────────────────────────────────────────────
 
   push: {
     label: "Push",
@@ -443,25 +481,16 @@ const ATOMIC_MOTIONS = {
     easing: "smoothstep"
   },
 
-  diagonal_settle: {
-    label: "Diagonal Settle",
-    zoom_delta: 0.15,
-    x_delta: 0.10,
-    y_delta: -0.07,
-    easing: "smoothstep"
-  },
-
-  // ─────────────────────────────────────────────────────────
-  // TRUE DIRECTION-CHANGE MOVEMENTS
+  // CORRECTED LABEL/DIRECTION MAPPING.
   //
-  // Zoom stays fixed during these phases.
-  // ─────────────────────────────────────────────────────────
-
+  // The previous R&D version visually rendered these opposite
+  // to the names. These values are now swapped to match what
+  // the viewer actually sees.
   tilt_up: {
     label: "Tilt Up",
     zoom_delta: 0.00,
     x_delta: 0.00,
-    y_delta: -0.24,
+    y_delta: 0.24,
     easing: "smoothstep"
   },
 
@@ -469,7 +498,7 @@ const ATOMIC_MOTIONS = {
     label: "Tilt Down",
     zoom_delta: 0.00,
     x_delta: 0.00,
-    y_delta: 0.24,
+    y_delta: -0.24,
     easing: "smoothstep"
   },
 
@@ -493,73 +522,135 @@ const ATOMIC_MOTIONS = {
 // ─────────────────────────────────────────────────────────────
 // COMPOUND PRESETS
 //
-// defaultStart* values are used unless explicitly overridden
-// by the request.
+// TWO FAMILIES:
 //
-// The Pan → Push compounds intentionally begin at zoom 1.16.
-// At ~1.02 there is too little crop margin for a meaningful
-// first-stage pan.
+// 1. ramp3
+//    staged image is ALREADY moving when wipe lands:
+//
+//      0.0–2.5s  low push
+//      2.5–4.0s  float / breathing hold
+//      4.0–6.0s  fast ramp-out
+//
+// 2. direction2
+//
+//      0.0–3.0s  first movement
+//      3.0–6.0s  second movement / direction change
+//
 // ─────────────────────────────────────────────────────────────
 
 const COMPOUND_PRESETS = {
 
   // ─────────────────────────────────────────────────────────
-  // PHASE 1 — rhythm / settle tests
+  // 3-PHASE SPEED-RAMP FAMILY
+  //
+  // Existing API keys retained so no Action/UI contract breaks.
   // ─────────────────────────────────────────────────────────
 
   hold_push: {
-    label: "Hold → Push",
-    first: "hold",
-    second: "push",
+    label: "Low Push → Float → Fast Push",
+    family: "ramp3",
+    motions: [
+      "low_push",
+      "float_hold",
+      "fast_push"
+    ],
+    durations: [
+      2.5,
+      1.5,
+      2.0
+    ],
     defaultStartZoom: 1.02,
     defaultStartX: 0.50,
     defaultStartY: 0.50
   },
 
   hold_diagonal_settle: {
-    label: "Hold → Diagonal Settle",
-    first: "hold",
-    second: "diagonal_settle",
+    label: "Low Push → Float → Fast Diagonal Settle",
+    family: "ramp3",
+    motions: [
+      "low_push",
+      "float_hold",
+      "fast_diagonal_settle"
+    ],
+    durations: [
+      2.5,
+      1.5,
+      2.0
+    ],
     defaultStartZoom: 1.02,
     defaultStartX: 0.50,
     defaultStartY: 0.50
   },
 
   push_diagonal_settle: {
-    label: "Push → Diagonal Settle",
-    first: "push",
-    second: "diagonal_settle",
+    label: "Low Push → Float → Fast Push Diagonal",
+    family: "ramp3",
+    motions: [
+      "low_push",
+      "float_hold",
+      "fast_push_diagonal"
+    ],
+    durations: [
+      2.5,
+      1.5,
+      2.0
+    ],
     defaultStartZoom: 1.02,
     defaultStartX: 0.50,
     defaultStartY: 0.50
   },
 
   gentle_push_diagonal_settle: {
-    label: "Gentle Push → Diagonal Settle",
-    first: "gentle_push",
-    second: "diagonal_settle",
+    label: "Low Push → Float → Soft Fast Diagonal",
+    family: "ramp3",
+    motions: [
+      "low_push",
+      "float_hold",
+      "fast_diagonal_settle_soft"
+    ],
+    durations: [
+      2.5,
+      1.5,
+      2.0
+    ],
     defaultStartZoom: 1.02,
     defaultStartX: 0.50,
     defaultStartY: 0.50
   },
 
   gentle_push_push: {
-    label: "Gentle Push → Push",
-    first: "gentle_push",
-    second: "push",
+    label: "Low Push → Float → Strong Fast Push",
+    family: "ramp3",
+    motions: [
+      "low_push",
+      "float_hold",
+      "fast_push_strong"
+    ],
+    durations: [
+      2.5,
+      1.5,
+      2.0
+    ],
     defaultStartZoom: 1.02,
     defaultStartX: 0.50,
     defaultStartY: 0.50
   },
 
   // ─────────────────────────────────────────────────────────
-  // PHASE 2 — true direction-change compounds
+  // 2-PHASE DIRECTION-CHANGE FAMILY
   // ─────────────────────────────────────────────────────────
 
   push_tilt_up: {
     label: "Push → Tilt Up",
-    first: "push",
-    second: "tilt_up",
+    family: "direction2",
+    motions: [
+      "push",
+      "tilt_up"
+    ],
+    durations: [
+      3.0,
+      3.0
+    ],
     defaultStartZoom: 1.02,
     defaultStartX: 0.50,
     defaultStartY: 0.50
@@ -567,8 +658,15 @@ const COMPOUND_PRESETS = {
 
   push_tilt_down: {
     label: "Push → Tilt Down",
-    first: "push",
-    second: "tilt_down",
+    family: "direction2",
+    motions: [
+      "push",
+      "tilt_down"
+    ],
+    durations: [
+      3.0,
+      3.0
+    ],
     defaultStartZoom: 1.02,
     defaultStartX: 0.50,
     defaultStartY: 0.50
@@ -576,8 +674,15 @@ const COMPOUND_PRESETS = {
 
   push_pan_left: {
     label: "Push → Pan Left",
-    first: "push",
-    second: "pan_left",
+    family: "direction2",
+    motions: [
+      "push",
+      "pan_left"
+    ],
+    durations: [
+      3.0,
+      3.0
+    ],
     defaultStartZoom: 1.02,
     defaultStartX: 0.50,
     defaultStartY: 0.50
@@ -585,30 +690,31 @@ const COMPOUND_PRESETS = {
 
   push_pan_right: {
     label: "Push → Pan Right",
-    first: "push",
-    second: "pan_right",
+    family: "direction2",
+    motions: [
+      "push",
+      "pan_right"
+    ],
+    durations: [
+      3.0,
+      3.0
+    ],
     defaultStartZoom: 1.02,
     defaultStartX: 0.50,
     defaultStartY: 0.50
   },
 
-  // Pan-first presets start somewhat tighter so the initial
-  // lateral move has enough crop margin to be visible.
-  //
-  // The x positions are deliberately asymmetric:
-  //
-  // Pan Left:
-  //   0.62 → 0.38
-  //
-  // Pan Right:
-  //   0.38 → 0.62
-  //
-  // Then Push holds that exact off-center destination.
-
   pan_left_push: {
     label: "Pan Left → Push",
-    first: "pan_left",
-    second: "push",
+    family: "direction2",
+    motions: [
+      "pan_left",
+      "push"
+    ],
+    durations: [
+      3.0,
+      3.0
+    ],
     defaultStartZoom: 1.16,
     defaultStartX: 0.62,
     defaultStartY: 0.50
@@ -616,8 +722,15 @@ const COMPOUND_PRESETS = {
 
   pan_right_push: {
     label: "Pan Right → Push",
-    first: "pan_right",
-    second: "push",
+    family: "direction2",
+    motions: [
+      "pan_right",
+      "push"
+    ],
+    durations: [
+      3.0,
+      3.0
+    ],
     defaultStartZoom: 1.16,
     defaultStartX: 0.38,
     defaultStartY: 0.50
@@ -625,7 +738,7 @@ const COMPOUND_PRESETS = {
 };
 
 // ─────────────────────────────────────────────────────────────
-// BUILD ONE COMPOUND SEGMENT
+// BUILD SEGMENT
 // ─────────────────────────────────────────────────────────────
 
 function buildCompoundSegment({
@@ -681,68 +794,174 @@ function buildCompoundSegment({
 }
 
 // ─────────────────────────────────────────────────────────────
-// HARD CONCAT
+// BUILD ALL SEGMENTS WITH EXACT STATE HANDOFF
+// ─────────────────────────────────────────────────────────────
+
+function buildCompoundSegments({
+  compound,
+  initialState,
+  fps,
+  segmentDurationOverride
+}) {
+  const segments = [];
+  let state = {
+    ...initialState
+  };
+
+  for (
+    let i = 0;
+    i < compound.motions.length;
+    i++
+  ) {
+    const motionKey =
+      compound.motions[i];
+
+    let duration =
+      compound.durations[i];
+
+    // Preserve the old segment_duration request behavior ONLY
+    // for direction2 presets.
+    //
+    // The ramp3 family has intentional locked timings:
+    // 2.5 + 1.5 + 2.0 = 6.0s.
+    if (
+      compound.family === "direction2" &&
+      Number.isFinite(segmentDurationOverride) &&
+      segmentDurationOverride > 0
+    ) {
+      duration =
+        segmentDurationOverride;
+    }
+
+    const segment =
+      buildCompoundSegment({
+        motionKey,
+        startState:
+          state,
+        duration,
+        fps
+      });
+
+    const error =
+      validateMotion(segment);
+
+    if (error) {
+      throw new Error(
+        `Segment ${i + 1} invalid: ${error}`
+      );
+    }
+
+    segments.push(
+      segment
+    );
+
+    state = {
+      zoom:
+        segment.end_zoom,
+
+      x:
+        segment.end_x,
+
+      y:
+        segment.end_y
+    };
+  }
+
+  return segments;
+}
+
+// ─────────────────────────────────────────────────────────────
+// HARD CONCAT ANY NUMBER OF SEGMENTS
 //
-// NO transition.
 // NO xfade.
-// NO dissolve.
+// NO transition.
 // NO overlap.
-//
-// Segment 1 and Segment 2 become one MP4.
 // ─────────────────────────────────────────────────────────────
 
 async function concatMotionSegments({
-  firstPath,
-  secondPath,
+  segmentPaths,
   outputPath,
   fps,
   totalDuration
 }) {
-  const filter =
-    `[0:v]setpts=PTS-STARTPTS[v0];` +
-    `[1:v]setpts=PTS-STARTPTS[v1];` +
-    `[v0][v1]concat=n=2:v=1:a=0,fps=${fps}[outv]`;
+  if (
+    !Array.isArray(segmentPaths) ||
+    segmentPaths.length < 2
+  ) {
+    throw new Error(
+      "concatMotionSegments requires at least two segment paths"
+    );
+  }
+
+  const args = [
+    "-y"
+  ];
+
+  for (const segmentPath of segmentPaths) {
+    args.push(
+      "-i",
+      segmentPath
+    );
+  }
+
+  const filterParts = [];
+
+  for (
+    let i = 0;
+    i < segmentPaths.length;
+    i++
+  ) {
+    filterParts.push(
+      `[${i}:v]setpts=PTS-STARTPTS[v${i}]`
+    );
+  }
+
+  const inputs =
+    segmentPaths
+      .map(
+        (_, i) =>
+          `[v${i}]`
+      )
+      .join("");
+
+  filterParts.push(
+    `${inputs}concat=n=${segmentPaths.length}:v=1:a=0,fps=${fps}[outv]`
+  );
+
+  args.push(
+    "-filter_complex",
+    filterParts.join(";"),
+
+    "-map",
+    "[outv]",
+
+    "-t",
+    String(totalDuration),
+
+    "-c:v",
+    "libx264",
+
+    "-preset",
+    "medium",
+
+    "-crf",
+    "18",
+
+    "-pix_fmt",
+    "yuv420p",
+
+    "-movflags",
+    "+faststart",
+
+    "-r",
+    String(fps),
+
+    outputPath
+  );
 
   await execFileAsync(
     "ffmpeg",
-    [
-      "-y",
-
-      "-i",
-      firstPath,
-
-      "-i",
-      secondPath,
-
-      "-filter_complex",
-      filter,
-
-      "-map",
-      "[outv]",
-
-      "-t",
-      String(totalDuration),
-
-      "-c:v",
-      "libx264",
-
-      "-preset",
-      "medium",
-
-      "-crf",
-      "18",
-
-      "-pix_fmt",
-      "yuv420p",
-
-      "-movflags",
-      "+faststart",
-
-      "-r",
-      String(fps),
-
-      outputPath
-    ],
+    args,
     {
       maxBuffer:
         20 *
@@ -844,13 +1063,10 @@ app.post(
       output_name: preset,
       prospect_id,
       property_address,
-
       duration:
         Number(duration),
-
       fps:
         Number(fps),
-
       ...p
     };
 
@@ -1101,18 +1317,6 @@ app.post(
 
 // ─────────────────────────────────────────────────────────────
 // COMPOUND MOTION TEST
-//
-// Default timing:
-//
-//   0.0–3.0s Segment 1
-//   3.0–6.0s Segment 2
-//
-// Segment 2 starts from the EXACT:
-//   zoom
-//   x
-//   y
-//
-// where Segment 1 ends.
 // ─────────────────────────────────────────────────────────────
 
 app.post(
@@ -1132,17 +1336,18 @@ app.post(
     const output_name =
       body.output_name;
 
-    const segmentDuration =
-      Number(
-        body.segment_duration ??
-        3
-      );
-
     const frameRate =
       Number(
         body.fps ??
         30
       );
+
+    const requestedSegmentDuration =
+      body.segment_duration === undefined
+        ? undefined
+        : Number(
+            body.segment_duration
+          );
 
     const prospect_id =
       body.prospect_id ||
@@ -1181,21 +1386,6 @@ app.post(
 
     if (
       !Number.isFinite(
-        segmentDuration
-      ) ||
-      segmentDuration <= 0
-    ) {
-      return res
-        .status(400)
-        .json({
-          success: false,
-          error:
-            "segment_duration must be greater than 0"
-        });
-    }
-
-    if (
-      !Number.isFinite(
         frameRate
       ) ||
       frameRate <= 0
@@ -1209,10 +1399,23 @@ app.post(
         });
     }
 
-    // Request values override preset defaults.
-    //
-    // If omitted, every compound can establish the starting
-    // composition it was designed around.
+    if (
+      requestedSegmentDuration !== undefined &&
+      (
+        !Number.isFinite(
+          requestedSegmentDuration
+        ) ||
+        requestedSegmentDuration <= 0
+      )
+    ) {
+      return res
+        .status(400)
+        .json({
+          success: false,
+          error:
+            "segment_duration must be greater than 0"
+        });
+    }
 
     const initialZoom =
       Number(
@@ -1279,9 +1482,6 @@ app.post(
         });
     }
 
-    const totalDuration =
-      segmentDuration * 2;
-
     const initialState = {
       zoom:
         initialZoom,
@@ -1293,80 +1493,35 @@ app.post(
         initialY
     };
 
-    const segment1 =
-      buildCompoundSegment({
-        motionKey:
-          compound.first,
+    let segments;
 
-        startState:
+    try {
+      segments =
+        buildCompoundSegments({
+          compound,
           initialState,
-
-        duration:
-          segmentDuration,
-
-        fps:
-          frameRate
-      });
-
-    const segment1Error =
-      validateMotion(
-        segment1
-      );
-
-    if (segment1Error) {
+          fps:
+            frameRate,
+          segmentDurationOverride:
+            requestedSegmentDuration
+        });
+    } catch (error) {
       return res
         .status(400)
         .json({
           success: false,
           error:
-            `Segment 1 invalid: ${segment1Error}`
+            error.message
         });
     }
 
-    // ───────────────────────────────────────────────────────
-    // EXACT SEAM HANDOFF
-    // ───────────────────────────────────────────────────────
-
-    const seamState = {
-      zoom:
-        segment1.end_zoom,
-
-      x:
-        segment1.end_x,
-
-      y:
-        segment1.end_y
-    };
-
-    const segment2 =
-      buildCompoundSegment({
-        motionKey:
-          compound.second,
-
-        startState:
-          seamState,
-
-        duration:
-          segmentDuration,
-
-        fps:
-          frameRate
-      });
-
-    const segment2Error =
-      validateMotion(
-        segment2
+    const totalDuration =
+      segments.reduce(
+        (sum, segment) =>
+          sum +
+          segment.duration,
+        0
       );
-
-    if (segment2Error) {
-      return res
-        .status(400)
-        .json({
-          success: false,
-          error:
-            `Segment 2 invalid: ${segment2Error}`
-        });
-    }
 
     const workDir =
       fs.mkdtempSync(
@@ -1380,18 +1535,6 @@ app.post(
       path.join(
         workDir,
         "input.jpg"
-      );
-
-    const firstPath =
-      path.join(
-        workDir,
-        "segment-1.mp4"
-      );
-
-    const secondPath =
-      path.join(
-        workDir,
-        "segment-2.mp4"
       );
 
     const finalPath =
@@ -1418,23 +1561,11 @@ app.post(
       );
 
       console.log(
+        `[RND COMPOUND] Family: ${compound.family}`
+      );
+
+      console.log(
         `[RND COMPOUND] Initial: zoom=${initialState.zoom.toFixed(4)} x=${initialState.x.toFixed(4)} y=${initialState.y.toFixed(4)}`
-      );
-
-      console.log(
-        `[RND COMPOUND] Segment 1: ${compound.first}`
-      );
-
-      console.log(
-        `[RND COMPOUND] Seam: zoom=${seamState.zoom.toFixed(4)} x=${seamState.x.toFixed(4)} y=${seamState.y.toFixed(4)}`
-      );
-
-      console.log(
-        `[RND COMPOUND] Segment 2: ${compound.second}`
-      );
-
-      console.log(
-        `[RND COMPOUND] Final: zoom=${segment2.end_zoom.toFixed(4)} x=${segment2.end_x.toFixed(4)} y=${segment2.end_y.toFixed(4)}`
       );
 
       await downloadImage(
@@ -1442,23 +1573,51 @@ app.post(
         inputPath
       );
 
-      await renderMotionClipToFile({
-        inputPath,
-        outputPath:
-          firstPath,
-        ...segment1
-      });
+      const segmentPaths = [];
 
-      await renderMotionClipToFile({
-        inputPath,
-        outputPath:
-          secondPath,
-        ...segment2
-      });
+      let currentTime =
+        0;
+
+      for (
+        let i = 0;
+        i < segments.length;
+        i++
+      ) {
+        const segment =
+          segments[i];
+
+        const outputPath =
+          path.join(
+            workDir,
+            `segment-${i + 1}.mp4`
+          );
+
+        console.log(
+          `[RND COMPOUND] Segment ${i + 1}: ${segment.motion_label} ` +
+          `${currentTime.toFixed(1)}-${(
+            currentTime +
+            segment.duration
+          ).toFixed(1)}s ` +
+          `start(z=${segment.start_zoom.toFixed(4)},x=${segment.start_x.toFixed(4)},y=${segment.start_y.toFixed(4)}) ` +
+          `end(z=${segment.end_zoom.toFixed(4)},x=${segment.end_x.toFixed(4)},y=${segment.end_y.toFixed(4)})`
+        );
+
+        await renderMotionClipToFile({
+          inputPath,
+          outputPath,
+          ...segment
+        });
+
+        segmentPaths.push(
+          outputPath
+        );
+
+        currentTime +=
+          segment.duration;
+      }
 
       await concatMotionSegments({
-        firstPath,
-        secondPath,
+        segmentPaths,
         outputPath:
           finalPath,
         fps:
@@ -1485,6 +1644,77 @@ app.post(
         `[RND COMPOUND] Uploaded: ${upload.key}`
       );
 
+      let timelineCursor =
+        0;
+
+      const renderSegments =
+        segments.map(
+          (
+            segment,
+            index
+          ) => {
+            const startTime =
+              timelineCursor;
+
+            const endTime =
+              startTime +
+              segment.duration;
+
+            timelineCursor =
+              endTime;
+
+            return {
+              index:
+                index + 1,
+
+              motion:
+                segment.motion_key,
+
+              label:
+                segment.motion_label,
+
+              start_time:
+                startTime,
+
+              end_time:
+                endTime,
+
+              duration:
+                segment.duration,
+
+              easing:
+                segment.easing,
+
+              start_zoom:
+                segment.start_zoom,
+
+              end_zoom:
+                segment.end_zoom,
+
+              start_focal_position: {
+                x:
+                  segment.start_x,
+
+                y:
+                  segment.start_y
+              },
+
+              end_focal_position: {
+                x:
+                  segment.end_x,
+
+                y:
+                  segment.end_y
+              }
+            };
+          }
+        );
+
+      const finalSegment =
+        segments[
+          segments.length - 1
+        ];
+
       return res.json({
         success: true,
 
@@ -1503,14 +1733,14 @@ app.post(
           label:
             compound.label,
 
+          family:
+            compound.family,
+
           output_name:
             finalOutputName,
 
           duration:
             totalDuration,
-
-          segment_duration:
-            segmentDuration,
 
           fps:
             frameRate,
@@ -1538,113 +1768,18 @@ app.post(
               initialState.y
           },
 
-          segment_1: {
-            motion:
-              segment1.motion_key,
-
-            label:
-              segment1.motion_label,
-
-            start_time:
-              0,
-
-            end_time:
-              segmentDuration,
-
-            duration:
-              segmentDuration,
-
-            easing:
-              segment1.easing,
-
-            start_zoom:
-              segment1.start_zoom,
-
-            end_zoom:
-              segment1.end_zoom,
-
-            start_focal_position: {
-              x:
-                segment1.start_x,
-
-              y:
-                segment1.start_y
-            },
-
-            end_focal_position: {
-              x:
-                segment1.end_x,
-
-              y:
-                segment1.end_y
-            }
-          },
-
-          seam: {
-            time:
-              segmentDuration,
-
-            zoom:
-              seamState.zoom,
-
-            x:
-              seamState.x,
-
-            y:
-              seamState.y
-          },
-
-          segment_2: {
-            motion:
-              segment2.motion_key,
-
-            label:
-              segment2.motion_label,
-
-            start_time:
-              segmentDuration,
-
-            end_time:
-              totalDuration,
-
-            duration:
-              segmentDuration,
-
-            easing:
-              segment2.easing,
-
-            start_zoom:
-              segment2.start_zoom,
-
-            end_zoom:
-              segment2.end_zoom,
-
-            start_focal_position: {
-              x:
-                segment2.start_x,
-
-              y:
-                segment2.start_y
-            },
-
-            end_focal_position: {
-              x:
-                segment2.end_x,
-
-              y:
-                segment2.end_y
-            }
-          },
+          segments:
+            renderSegments,
 
           final_state: {
             zoom:
-              segment2.end_zoom,
+              finalSegment.end_zoom,
 
             x:
-              segment2.end_x,
+              finalSegment.end_x,
 
             y:
-              segment2.end_y
+              finalSegment.end_y
           }
         }
       });
