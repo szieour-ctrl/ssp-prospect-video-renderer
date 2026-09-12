@@ -19,7 +19,7 @@ const AWS_REGION = process.env.AWS_REGION || "us-east-2";
 const AWS_S3_BUCKET = process.env.AWS_S3_BUCKET;
 
 const SERVICE_NAME = "ssp-ken-burns-rnd";
-const SERVICE_VERSION = "0.2.0";
+const SERVICE_VERSION = "0.3.0";
 
 const s3 = new S3Client({
   region: AWS_REGION
@@ -93,8 +93,7 @@ async function downloadImage(url, outputPath) {
   if (!contentType.startsWith("image/")) {
     throw new Error(
       `Expected image but received ${
-        contentType ||
-        "unknown content type"
+        contentType || "unknown content type"
       }`
     );
   }
@@ -404,19 +403,22 @@ async function renderMotionClip(params) {
 }
 
 // ─────────────────────────────────────────────────────────────
-// COMPOUND MOTION DEFINITIONS
+// ATOMIC COMPOUND MOVEMENTS
 //
-// These are intentionally relative deltas.
+// IMPORTANT:
 //
-// Segment 2 ALWAYS starts from segment 1's exact final:
-//   zoom
-//   x
-//   y
+// x/y here are crop-position travel, not object coordinates.
 //
-// That is the seam-continuity contract.
+// Segment 2 always starts from segment 1's exact final state.
+// This is the visual-continuity seam contract.
+//
+// Direction-change motions deliberately HOLD zoom so the second
+// movement reads as a real pan/tilt rather than another diagonal
+// zoom.
 // ─────────────────────────────────────────────────────────────
 
 const ATOMIC_MOTIONS = {
+
   hold: {
     label: "Hold",
     zoom_delta: 0.04,
@@ -435,7 +437,7 @@ const ATOMIC_MOTIONS = {
 
   push: {
     label: "Push",
-    zoom_delta: 0.22,
+    zoom_delta: 0.18,
     x_delta: 0.00,
     y_delta: 0.00,
     easing: "smoothstep"
@@ -444,46 +446,186 @@ const ATOMIC_MOTIONS = {
   diagonal_settle: {
     label: "Diagonal Settle",
     zoom_delta: 0.15,
-    x_delta: 0.08,
-    y_delta: -0.05,
+    x_delta: 0.10,
+    y_delta: -0.07,
+    easing: "smoothstep"
+  },
+
+  // ─────────────────────────────────────────────────────────
+  // TRUE DIRECTION-CHANGE MOVEMENTS
+  //
+  // Zoom stays fixed during these phases.
+  // ─────────────────────────────────────────────────────────
+
+  tilt_up: {
+    label: "Tilt Up",
+    zoom_delta: 0.00,
+    x_delta: 0.00,
+    y_delta: -0.24,
+    easing: "smoothstep"
+  },
+
+  tilt_down: {
+    label: "Tilt Down",
+    zoom_delta: 0.00,
+    x_delta: 0.00,
+    y_delta: 0.24,
+    easing: "smoothstep"
+  },
+
+  pan_left: {
+    label: "Pan Left",
+    zoom_delta: 0.00,
+    x_delta: -0.24,
+    y_delta: 0.00,
+    easing: "smoothstep"
+  },
+
+  pan_right: {
+    label: "Pan Right",
+    zoom_delta: 0.00,
+    x_delta: 0.24,
+    y_delta: 0.00,
     easing: "smoothstep"
   }
 };
 
+// ─────────────────────────────────────────────────────────────
+// COMPOUND PRESETS
+//
+// defaultStart* values are used unless explicitly overridden
+// by the request.
+//
+// The Pan → Push compounds intentionally begin at zoom 1.16.
+// At ~1.02 there is too little crop margin for a meaningful
+// first-stage pan.
+// ─────────────────────────────────────────────────────────────
+
 const COMPOUND_PRESETS = {
+
+  // ─────────────────────────────────────────────────────────
+  // PHASE 1 — rhythm / settle tests
+  // ─────────────────────────────────────────────────────────
+
   hold_push: {
     label: "Hold → Push",
     first: "hold",
-    second: "push"
+    second: "push",
+    defaultStartZoom: 1.02,
+    defaultStartX: 0.50,
+    defaultStartY: 0.50
   },
 
   hold_diagonal_settle: {
     label: "Hold → Diagonal Settle",
     first: "hold",
-    second: "diagonal_settle"
+    second: "diagonal_settle",
+    defaultStartZoom: 1.02,
+    defaultStartX: 0.50,
+    defaultStartY: 0.50
   },
 
   push_diagonal_settle: {
     label: "Push → Diagonal Settle",
     first: "push",
-    second: "diagonal_settle"
+    second: "diagonal_settle",
+    defaultStartZoom: 1.02,
+    defaultStartX: 0.50,
+    defaultStartY: 0.50
   },
 
   gentle_push_diagonal_settle: {
     label: "Gentle Push → Diagonal Settle",
     first: "gentle_push",
-    second: "diagonal_settle"
+    second: "diagonal_settle",
+    defaultStartZoom: 1.02,
+    defaultStartX: 0.50,
+    defaultStartY: 0.50
   },
 
   gentle_push_push: {
     label: "Gentle Push → Push",
     first: "gentle_push",
-    second: "push"
+    second: "push",
+    defaultStartZoom: 1.02,
+    defaultStartX: 0.50,
+    defaultStartY: 0.50
+  },
+
+  // ─────────────────────────────────────────────────────────
+  // PHASE 2 — true direction-change compounds
+  // ─────────────────────────────────────────────────────────
+
+  push_tilt_up: {
+    label: "Push → Tilt Up",
+    first: "push",
+    second: "tilt_up",
+    defaultStartZoom: 1.02,
+    defaultStartX: 0.50,
+    defaultStartY: 0.50
+  },
+
+  push_tilt_down: {
+    label: "Push → Tilt Down",
+    first: "push",
+    second: "tilt_down",
+    defaultStartZoom: 1.02,
+    defaultStartX: 0.50,
+    defaultStartY: 0.50
+  },
+
+  push_pan_left: {
+    label: "Push → Pan Left",
+    first: "push",
+    second: "pan_left",
+    defaultStartZoom: 1.02,
+    defaultStartX: 0.50,
+    defaultStartY: 0.50
+  },
+
+  push_pan_right: {
+    label: "Push → Pan Right",
+    first: "push",
+    second: "pan_right",
+    defaultStartZoom: 1.02,
+    defaultStartX: 0.50,
+    defaultStartY: 0.50
+  },
+
+  // Pan-first presets start somewhat tighter so the initial
+  // lateral move has enough crop margin to be visible.
+  //
+  // The x positions are deliberately asymmetric:
+  //
+  // Pan Left:
+  //   0.62 → 0.38
+  //
+  // Pan Right:
+  //   0.38 → 0.62
+  //
+  // Then Push holds that exact off-center destination.
+
+  pan_left_push: {
+    label: "Pan Left → Push",
+    first: "pan_left",
+    second: "push",
+    defaultStartZoom: 1.16,
+    defaultStartX: 0.62,
+    defaultStartY: 0.50
+  },
+
+  pan_right_push: {
+    label: "Pan Right → Push",
+    first: "pan_right",
+    second: "push",
+    defaultStartZoom: 1.16,
+    defaultStartX: 0.38,
+    defaultStartY: 0.50
   }
 };
 
 // ─────────────────────────────────────────────────────────────
-// BUILD ONE COMPOUND SEGMENT FROM A START STATE
+// BUILD ONE COMPOUND SEGMENT
 // ─────────────────────────────────────────────────────────────
 
 function buildCompoundSegment({
@@ -508,11 +650,9 @@ function buildCompoundSegment({
     motion_label:
       motion.label,
 
-    duration:
-      duration,
+    duration,
 
-    fps:
-      fps,
+    fps,
 
     easing:
       motion.easing,
@@ -545,9 +685,10 @@ function buildCompoundSegment({
 //
 // NO transition.
 // NO xfade.
+// NO dissolve.
 // NO overlap.
 //
-// Two rendered motion segments become one continuous MP4.
+// Segment 1 and Segment 2 become one MP4.
 // ─────────────────────────────────────────────────────────────
 
 async function concatMotionSegments({
@@ -627,12 +768,14 @@ app.get("/health", (req, res) => {
     s3_configured:
       Boolean(AWS_S3_BUCKET),
     region: AWS_REGION,
+
     routes: [
       "GET /health",
       "POST /test-cinematic-motion",
       "POST /test-cinematic-motion-custom",
       "POST /test-compound-motion"
     ],
+
     compound_presets:
       Object.keys(
         COMPOUND_PRESETS
@@ -647,7 +790,9 @@ app.get("/health", (req, res) => {
 app.post(
   "/test-cinematic-motion",
   async (req, res) => {
+
     const presets = {
+
       cinematic_push_right: {
         start_zoom: 1.02,
         end_zoom: 1.30,
@@ -657,6 +802,7 @@ app.post(
         end_y: 0.48,
         easing: "linear"
       }
+
     };
 
     const {
@@ -770,14 +916,13 @@ app.post(
               params.end_y
           },
 
-          width:
-            1920,
-
-          height:
-            1080
+          width: 1920,
+          height: 1080
         }
       });
+
     } catch (error) {
+
       console.error(
         "[RND PRESET] Render failed:",
         error.stderr ||
@@ -804,6 +949,7 @@ app.post(
 app.post(
   "/test-cinematic-motion-custom",
   async (req, res) => {
+
     const {
       image_url,
       output_name =
@@ -878,6 +1024,7 @@ app.post(
     }
 
     try {
+
       const upload =
         await renderMotionClip(
           params
@@ -926,14 +1073,13 @@ app.post(
               params.end_y
           },
 
-          width:
-            1920,
-
-          height:
-            1080
+          width: 1920,
+          height: 1080
         }
       });
+
     } catch (error) {
+
       console.error(
         "[RND CUSTOM] Render failed:",
         error.stderr ||
@@ -956,56 +1102,55 @@ app.post(
 // ─────────────────────────────────────────────────────────────
 // COMPOUND MOTION TEST
 //
-// Renders:
-//   Segment 1
-//   Segment 2
-//
-// Then concatenates them frame-to-frame.
-//
-// There is:
-//   NO xfade
-//   NO dissolve
-//   NO overlap
-//   NO transition
-//
 // Default timing:
-//   0.0–3.0s segment 1
-//   3.0–6.0s segment 2
 //
-// Segment 2 receives the exact:
-//   end zoom
-//   end x
-//   end y
+//   0.0–3.0s Segment 1
+//   3.0–6.0s Segment 2
 //
-// from segment 1.
+// Segment 2 starts from the EXACT:
+//   zoom
+//   x
+//   y
+//
+// where Segment 1 ends.
 // ─────────────────────────────────────────────────────────────
 
 app.post(
   "/test-compound-motion",
   async (req, res) => {
-    const {
-      image_url,
 
-      preset =
-        "hold_push",
+    const body =
+      req.body || {};
 
-      output_name,
+    const image_url =
+      body.image_url;
 
-      segment_duration = 3,
+    const preset =
+      body.preset ||
+      "hold_push";
 
-      fps = 30,
+    const output_name =
+      body.output_name;
 
-      start_zoom = 1.02,
+    const segmentDuration =
+      Number(
+        body.segment_duration ??
+        3
+      );
 
-      start_x = 0.50,
+    const frameRate =
+      Number(
+        body.fps ??
+        30
+      );
 
-      start_y = 0.50,
+    const prospect_id =
+      body.prospect_id ||
+      "motion-test";
 
-      prospect_id =
-        "motion-test",
-
-      property_address = ""
-    } = req.body || {};
+    const property_address =
+      body.property_address ||
+      "";
 
     if (!image_url) {
       return res
@@ -1033,23 +1178,6 @@ app.post(
             ).join(", ")}`
         });
     }
-
-    const segmentDuration =
-      Number(
-        segment_duration
-      );
-
-    const frameRate =
-      Number(fps);
-
-    const initialZoom =
-      Number(start_zoom);
-
-    const initialX =
-      Number(start_x);
-
-    const initialY =
-      Number(start_y);
 
     if (
       !Number.isFinite(
@@ -1080,6 +1208,29 @@ app.post(
             "fps must be greater than 0"
         });
     }
+
+    // Request values override preset defaults.
+    //
+    // If omitted, every compound can establish the starting
+    // composition it was designed around.
+
+    const initialZoom =
+      Number(
+        body.start_zoom ??
+        compound.defaultStartZoom
+      );
+
+    const initialX =
+      Number(
+        body.start_x ??
+        compound.defaultStartX
+      );
+
+    const initialY =
+      Number(
+        body.start_y ??
+        compound.defaultStartY
+      );
 
     if (
       !Number.isFinite(
@@ -1173,10 +1324,7 @@ app.post(
     }
 
     // ───────────────────────────────────────────────────────
-    // THE SEAM
-    //
-    // Segment 2 starts from EXACTLY the state where
-    // segment 1 ends.
+    // EXACT SEAM HANDOFF
     // ───────────────────────────────────────────────────────
 
     const seamState = {
@@ -1260,6 +1408,7 @@ app.post(
       preset;
 
     try {
+
       console.log(
         `[RND COMPOUND] Starting ${preset}`
       );
@@ -1269,21 +1418,23 @@ app.post(
       );
 
       console.log(
+        `[RND COMPOUND] Initial: zoom=${initialState.zoom.toFixed(4)} x=${initialState.x.toFixed(4)} y=${initialState.y.toFixed(4)}`
+      );
+
+      console.log(
         `[RND COMPOUND] Segment 1: ${compound.first}`
       );
 
       console.log(
-        `[RND COMPOUND] Seam: zoom=${seamState.zoom.toFixed(
-          4
-        )} x=${seamState.x.toFixed(
-          4
-        )} y=${seamState.y.toFixed(
-          4
-        )}`
+        `[RND COMPOUND] Seam: zoom=${seamState.zoom.toFixed(4)} x=${seamState.x.toFixed(4)} y=${seamState.y.toFixed(4)}`
       );
 
       console.log(
         `[RND COMPOUND] Segment 2: ${compound.second}`
+      );
+
+      console.log(
+        `[RND COMPOUND] Final: zoom=${segment2.end_zoom.toFixed(4)} x=${segment2.end_x.toFixed(4)} y=${segment2.end_y.toFixed(4)}`
       );
 
       await downloadImage(
@@ -1295,7 +1446,6 @@ app.post(
         inputPath,
         outputPath:
           firstPath,
-
         ...segment1
       });
 
@@ -1303,7 +1453,6 @@ app.post(
         inputPath,
         outputPath:
           secondPath,
-
         ...segment2
       });
 
@@ -1499,7 +1648,9 @@ app.post(
           }
         }
       });
+
     } catch (error) {
+
       console.error(
         "[RND COMPOUND] Render failed:",
         error.stderr ||
@@ -1516,7 +1667,9 @@ app.post(
             error.message ||
             "Compound motion render failed"
         });
+
     } finally {
+
       try {
         fs.rmSync(
           workDir,
@@ -1526,6 +1679,7 @@ app.post(
           }
         );
       } catch (cleanupError) {
+
         console.error(
           "[RND COMPOUND] Cleanup failed:",
           cleanupError.message
@@ -1543,6 +1697,7 @@ app.listen(
   PORT,
   "0.0.0.0",
   () => {
+
     console.log(
       `${SERVICE_NAME} v${SERVICE_VERSION} listening on port ${PORT}`
     );
