@@ -19,7 +19,7 @@ const AWS_REGION = process.env.AWS_REGION || "us-east-2";
 const AWS_S3_BUCKET = process.env.AWS_S3_BUCKET;
 
 const SERVICE_NAME = "ssp-ken-burns-rnd";
-const SERVICE_VERSION = "0.4.0";
+const SERVICE_VERSION = "0.4.1";
 
 const s3 = new S3Client({
   region: AWS_REGION
@@ -429,6 +429,19 @@ const ATOMIC_MOTIONS = {
     easing: "smoothstep"
   },
 
+  // Used by Float → Pull Back.
+  //
+  // The x/y deltas intentionally reverse float_hold so the
+  // composition returns essentially to center during the
+  // pull-back phase.
+  pull_back: {
+    label: "Pull Back",
+    zoom_delta: -0.30,
+    x_delta: -0.012,
+    y_delta: 0.008,
+    easing: "smoothstep"
+  },
+
   fast_push: {
     label: "Fast Push",
     zoom_delta: 0.18,
@@ -522,7 +535,7 @@ const ATOMIC_MOTIONS = {
 // ─────────────────────────────────────────────────────────────
 // COMPOUND PRESETS
 //
-// TWO FAMILIES:
+// THREE FAMILIES:
 //
 // 1. ramp3
 //    staged image is ALREADY moving when wipe lands:
@@ -536,9 +549,40 @@ const ATOMIC_MOTIONS = {
 //      0.0–3.0s  first movement
 //      3.0–6.0s  second movement / direction change
 //
+// 3. pullback2
+//
+//      0.0–1.5s  float / settle
+//      1.5–6.0s  pull back and recenter
+//
 // ─────────────────────────────────────────────────────────────
 
 const COMPOUND_PRESETS = {
+
+  // ─────────────────────────────────────────────────────────
+  // FLOAT → PULL BACK
+  //
+  // Designed specifically as a Room Reveal END motion:
+  //
+  // wipe lands on staged image
+  // → slight floating movement
+  // → controlled pull back to reveal more of the room
+  // ─────────────────────────────────────────────────────────
+
+  float_pull_back: {
+    label: "Float → Pull Back",
+    family: "pullback2",
+    motions: [
+      "float_hold",
+      "pull_back"
+    ],
+    durations: [
+      1.5,
+      4.5
+    ],
+    defaultStartZoom: 1.28,
+    defaultStartX: 0.50,
+    defaultStartY: 0.50
+  },
 
   // ─────────────────────────────────────────────────────────
   // 3-PHASE SPEED-RAMP FAMILY
@@ -822,8 +866,7 @@ function buildCompoundSegments({
     // Preserve the old segment_duration request behavior ONLY
     // for direction2 presets.
     //
-    // The ramp3 family has intentional locked timings:
-    // 2.5 + 1.5 + 2.0 = 6.0s.
+    // ramp3 and pullback2 use intentional fixed timings.
     if (
       compound.family === "direction2" &&
       Number.isFinite(segmentDurationOverride) &&
