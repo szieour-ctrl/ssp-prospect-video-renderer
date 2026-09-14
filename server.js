@@ -866,8 +866,8 @@ app.post(
          t=fill,
 
          drawbox=
-         x=(w/2)-80:
-         y=(h/2)-80:
+         x=(iw-160)/2:
+         y=(ih-160)/2:
          w=160:
          h=160:
          color=black@0.45:
