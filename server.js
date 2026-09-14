@@ -468,17 +468,19 @@ app.post(
       // ───────────────────────────────────────────────────────
       // STAGED IMAGE KEN BURNS
       //
+      // Same basic motion profile as PRO Plus:
+      //
       // start_zoom = 1.0
-      // max_zoom   = 1.35
+      // max_zoom   = 1.5
       // duration   = 6 seconds
       //
       // Smoothstep ease-in/ease-out:
       //
       // t = min(frame / (6 * fps), 1)
       // ease = 3t² - 2t³
-      // zoom = 1 + 0.35 * ease
+      // zoom = 1 + 0.5 * ease
       //
-      // Once t reaches 1, zoom remains at 1.35.
+      // Once t reaches 1, zoom remains at 1.5.
       // ───────────────────────────────────────────────────────
 
       const kenBurnsFrames =
@@ -559,4 +561,502 @@ app.post(
           "-i",
           beforePath,
 
-          "-
+          "-loop",
+          "1",
+          "-i",
+          afterPath,
+
+          "-filter_complex",
+          filter,
+
+          "-map",
+          "[outv]",
+
+          "-t",
+          String(
+            outputDuration
+          ),
+
+          "-c:v",
+          "libx264",
+
+          "-preset",
+          "medium",
+
+          "-crf",
+          "18",
+
+          "-pix_fmt",
+          "yuv420p",
+
+          "-movflags",
+          "+faststart",
+
+          "-r",
+          String(
+            frameRate
+          ),
+
+          outputPath
+        ],
+        {
+          maxBuffer:
+            20 *
+            1024 *
+            1024
+        }
+      );
+
+      const videoKey =
+        `ssp-prospects/${prospectFolder}/video.mp4`;
+
+      const upload =
+        await uploadFileToS3({
+          filePath:
+            outputPath,
+
+          key:
+            videoKey,
+
+          contentType:
+            "video/mp4"
+        });
+
+      console.log(
+        `[PROSPECT VIDEO] Uploaded to S3: ${upload.key}`
+      );
+
+      return res.json({
+        success:
+          true,
+
+        video_url:
+          upload.url,
+
+        public_id:
+          upload.key,
+
+        prospect: {
+          prospect_id,
+          agent_name,
+          property_address,
+          mls_number,
+          run_date:
+            prospectRunDate,
+          folder_name:
+            prospectFolder,
+          storage_prefix:
+            prospectStoragePrefix
+        },
+
+        render: {
+          before_duration:
+            beforeDuration,
+
+          after_duration:
+            afterDuration,
+
+          transition,
+
+          transition_duration:
+            transitionDuration,
+
+          fps:
+            frameRate,
+
+          before_label,
+
+          after_label,
+
+          output_duration:
+            outputDuration,
+
+          staged_motion:
+            "ken_burns_push_in",
+
+          ken_burns_duration:
+            6,
+
+          ken_burns_start_zoom:
+            1.0,
+
+          ken_burns_end_zoom:
+            1.5,
+
+          width:
+            1920,
+
+          height:
+            1080
+        }
+      });
+    } catch (error) {
+      console.error(
+        "[PROSPECT VIDEO] Render failed:",
+        error.stderr ||
+          error.message ||
+          error
+      );
+
+      return res
+        .status(500)
+        .json({
+          success:
+            false,
+
+          error:
+            error.message ||
+            "Prospect video rendering failed"
+        });
+    } finally {
+      try {
+        fs.rmSync(
+          workDir,
+          {
+            recursive:
+              true,
+
+            force:
+              true
+          }
+        );
+      } catch (
+        cleanupError
+      ) {
+        console.error(
+          "[PROSPECT VIDEO] Cleanup failed:",
+          cleanupError.message
+        );
+      }
+    }
+  }
+);
+
+// ─────────────────────────────────────────────────────────────
+// PROSPECT EMAIL THUMBNAIL
+// MATCHED FILL + CENTER CROP
+// ─────────────────────────────────────────────────────────────
+
+app.post(
+  "/render-prospect-thumbnail",
+  async (req, res) => {
+    const {
+      before_image_url,
+      after_image_url,
+
+      before_label =
+        "ORIGINAL LISTING PHOTO",
+
+      after_label =
+        "SMART STAGE PRO PREVIEW",
+
+      prospect_id =
+        "prospect",
+
+      agent_name =
+        "",
+
+      property_address =
+        "",
+
+      mls_number =
+        ""
+    } = req.body || {};
+
+    if (
+      !before_image_url ||
+      !after_image_url ||
+      !property_address
+    ) {
+      return res
+        .status(400)
+        .json({
+          success:
+            false,
+
+          error:
+            "Missing before_image_url, after_image_url, or property_address"
+        });
+    }
+
+    const safeBeforeLabel =
+      escapeDrawtext(
+        before_label
+      );
+
+    const safeAfterLabel =
+      escapeDrawtext(
+        after_label
+      );
+
+    const prospectFolder =
+      makeProspectFolder(
+        property_address
+      );
+
+    const prospectRunDate =
+      prospectFolder.slice(0, 10);
+
+    const prospectStoragePrefix =
+      `ssp-prospects/${prospectFolder}/`;
+
+    const workDir =
+      fs.mkdtempSync(
+        path.join(
+          os.tmpdir(),
+          "ssp-thumb-"
+        )
+      );
+
+    const beforePath =
+      path.join(
+        workDir,
+        "before.jpg"
+      );
+
+    const afterPath =
+      path.join(
+        workDir,
+        "after.jpg"
+      );
+
+    const outputPath =
+      path.join(
+        workDir,
+        "thumbnail.jpg"
+      );
+
+    try {
+      console.log(
+        `[PROSPECT THUMBNAIL] Starting render for ${prospectFolder}`
+      );
+
+      await downloadFile(
+        before_image_url,
+        beforePath
+      );
+
+      await downloadFile(
+        after_image_url,
+        afterPath
+      );
+
+      const filter = [
+        `[0:v]
+         scale=960:1080:force_original_aspect_ratio=increase,
+         crop=960:1080,
+         setsar=1
+         [before]`,
+
+        `[1:v]
+         scale=960:1080:force_original_aspect_ratio=increase,
+         crop=960:1080,
+         setsar=1
+         [after]`,
+
+        `[before][after]
+         hstack=inputs=2,
+
+         drawbox=
+         x=958:
+         y=0:
+         w=4:
+         h=1080:
+         color=white@0.95:
+         t=fill,
+
+         drawbox=
+         x=(w/2)-80:
+         y=(h/2)-80:
+         w=160:
+         h=160:
+         color=black@0.45:
+         t=fill,
+
+         drawtext=
+         text='▶':
+         fontcolor=white:
+         fontsize=96:
+         x=(w-tw)/2+6:
+         y=(h-th)/2-4,
+
+         drawtext=
+         text='${safeBeforeLabel}':
+         fontcolor=white:
+         fontsize=34:
+         box=1:
+         boxcolor=black@0.55:
+         boxborderw=14:
+         x=40:
+         y=h-th-40,
+
+         drawtext=
+         text='${safeAfterLabel}':
+         fontcolor=white:
+         fontsize=34:
+         box=1:
+         boxcolor=black@0.55:
+         boxborderw=14:
+         x=w-tw-40:
+         y=h-th-40
+
+         [out]`
+      ]
+        .join(";")
+        .replace(
+          /\s*\n\s*/g,
+          ""
+        );
+
+      await execFileAsync(
+        "ffmpeg",
+        [
+          "-y",
+
+          "-i",
+          beforePath,
+
+          "-i",
+          afterPath,
+
+          "-filter_complex",
+          filter,
+
+          "-map",
+          "[out]",
+
+          "-frames:v",
+          "1",
+
+          "-q:v",
+          "2",
+
+          outputPath
+        ],
+        {
+          maxBuffer:
+            20 *
+            1024 *
+            1024
+        }
+      );
+
+      const thumbnailKey =
+        `ssp-prospects/${prospectFolder}/thumbnail.jpg`;
+
+      const upload =
+        await uploadFileToS3({
+          filePath:
+            outputPath,
+
+          key:
+            thumbnailKey,
+
+          contentType:
+            "image/jpeg"
+        });
+
+      console.log(
+        `[PROSPECT THUMBNAIL] Uploaded to S3: ${upload.key}`
+      );
+
+      return res.json({
+        success:
+          true,
+
+        image_url:
+          upload.url,
+
+        public_id:
+          upload.key,
+
+        prospect: {
+          prospect_id,
+          agent_name,
+          property_address,
+          mls_number,
+          run_date:
+            prospectRunDate,
+          folder_name:
+            prospectFolder,
+          storage_prefix:
+            prospectStoragePrefix
+        },
+
+        thumbnail: {
+          width:
+            1920,
+
+          height:
+            1080,
+
+          before_label,
+
+          after_label
+        }
+      });
+    } catch (error) {
+      console.error(
+        "[PROSPECT THUMBNAIL] Render failed:",
+        error.stderr ||
+          error.message ||
+          error
+      );
+
+      return res
+        .status(500)
+        .json({
+          success:
+            false,
+
+          error:
+            error.message ||
+            "Prospect thumbnail rendering failed"
+        });
+    } finally {
+      try {
+        fs.rmSync(
+          workDir,
+          {
+            recursive:
+              true,
+
+            force:
+              true
+          }
+        );
+      } catch (
+        cleanupError
+      ) {
+        console.error(
+          "[PROSPECT THUMBNAIL] Cleanup failed:",
+          cleanupError.message
+        );
+      }
+    }
+  }
+);
+
+// ─────────────────────────────────────────────────────────────
+// START SERVER
+// ─────────────────────────────────────────────────────────────
+
+app.listen(
+  PORT,
+  () => {
+    console.log(
+      `SSP Prospect Video Renderer listening on port ${PORT}`
+    );
+
+    console.log(
+      `[S3] Region: ${AWS_REGION}`
+    );
+
+    console.log(
+      `[S3] Bucket: ${
+        AWS_S3_BUCKET ||
+        "NOT CONFIGURED"
+      }`
+    );
+  }
+);
