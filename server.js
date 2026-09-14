@@ -103,19 +103,6 @@ function escapeDrawtext(value) {
     .replace(/%/g, "\\%");
 }
 
-function makeSafePublicId(value) {
-  return String(
-    value || "prospect"
-  )
-    .toLowerCase()
-    .replace(
-      /[^a-z0-9-_]/g,
-      "-"
-    )
-    .replace(/-+/g, "-")
-    .replace(/^-|-$/g, "");
-}
-
 function makeSafeStreetAddress(
   propertyAddress
 ) {
@@ -138,25 +125,51 @@ function makeSafeStreetAddress(
     .replace(/^-|-$/g, "");
 }
 
-function makeProspectFolder(
-  prospectId,
-  propertyAddress
+function getPacificRunDate(
+  date = new Date()
 ) {
-  const safeProspectId =
-    makeSafePublicId(
-      prospectId
-    ) || "prospect";
+  const dateParts =
+    new Intl.DateTimeFormat(
+      "en-US",
+      {
+        timeZone:
+          "America/Los_Angeles",
+        year:
+          "numeric",
+        month:
+          "2-digit",
+        day:
+          "2-digit"
+      }
+    ).formatToParts(date);
 
+  const values =
+    Object.fromEntries(
+      dateParts.map(part => [
+        part.type,
+        part.value
+      ])
+    );
+
+  return `${values.year}-${values.month}-${values.day}`;
+}
+
+function makeProspectFolder(
+  propertyAddress,
+  date = new Date()
+) {
   const safeStreetAddress =
     makeSafeStreetAddress(
       propertyAddress
     );
 
   if (!safeStreetAddress) {
-    return safeProspectId;
+    throw new Error(
+      "property_address is required to create the prospect folder"
+    );
   }
 
-  return `${safeProspectId}_${safeStreetAddress}`;
+  return `${getPacificRunDate(date)}__${safeStreetAddress}`;
 }
 
 function ensureS3Configured() {
@@ -258,7 +271,8 @@ app.post(
 
     if (
       !before_image_url ||
-      !after_image_url
+      !after_image_url ||
+      !property_address
     ) {
       return res
         .status(400)
@@ -267,7 +281,7 @@ app.post(
             false,
 
           error:
-            "Missing before_image_url or after_image_url"
+            "Missing before_image_url, after_image_url, or property_address"
         });
     }
 
@@ -384,9 +398,14 @@ app.post(
 
     const prospectFolder =
       makeProspectFolder(
-        prospect_id,
         property_address
       );
+
+    const prospectRunDate =
+      prospectFolder.slice(0, 10);
+
+    const prospectStoragePrefix =
+      `ssp-prospects/${prospectFolder}/`;
 
     const workDir =
       fs.mkdtempSync(
@@ -621,7 +640,13 @@ app.post(
           prospect_id,
           agent_name,
           property_address,
-          mls_number
+          mls_number,
+          run_date:
+            prospectRunDate,
+          folder_name:
+            prospectFolder,
+          storage_prefix:
+            prospectStoragePrefix
         },
 
         render: {
@@ -740,7 +765,8 @@ app.post(
 
     if (
       !before_image_url ||
-      !after_image_url
+      !after_image_url ||
+      !property_address
     ) {
       return res
         .status(400)
@@ -749,7 +775,7 @@ app.post(
             false,
 
           error:
-            "Missing before_image_url or after_image_url"
+            "Missing before_image_url, after_image_url, or property_address"
         });
     }
 
@@ -765,9 +791,14 @@ app.post(
 
     const prospectFolder =
       makeProspectFolder(
-        prospect_id,
         property_address
       );
+
+    const prospectRunDate =
+      prospectFolder.slice(0, 10);
+
+    const prospectStoragePrefix =
+      `ssp-prospects/${prospectFolder}/`;
 
     const workDir =
       fs.mkdtempSync(
@@ -943,7 +974,13 @@ app.post(
           prospect_id,
           agent_name,
           property_address,
-          mls_number
+          mls_number,
+          run_date:
+            prospectRunDate,
+          folder_name:
+            prospectFolder,
+          storage_prefix:
+            prospectStoragePrefix
         },
 
         thumbnail: {
