@@ -752,7 +752,7 @@ function ensure30sConfigured() {
 
   if (missing.length) {
     throw new Error(
-      \`Missing required 30s renderer variables: \${missing.join(", ")}\`
+      `Missing required 30s renderer variables: ${missing.join(", ")}`
     );
   }
 }
@@ -786,7 +786,7 @@ async function downloadMedia(
     )
   ) {
     throw new Error(
-      \`Unexpected content type \${contentType || "unknown"} from \${url}\`
+      `Unexpected content type ${contentType || "unknown"} from ${url}`
     );
   }
 
@@ -795,7 +795,7 @@ async function downloadMedia(
 
   if (buffer.length < 1000) {
     throw new Error(
-      \`Downloaded media is unexpectedly small: \${buffer.length} bytes\`
+      `Downloaded media is unexpectedly small: ${buffer.length} bytes`
     );
   }
 
@@ -836,7 +836,7 @@ async function getMediaDuration(filePath) {
     !Number.isFinite(duration)
   ) {
     throw new Error(
-      \`Could not determine media duration for \${filePath}\`
+      `Could not determine media duration for ${filePath}`
     );
   }
 
@@ -867,7 +867,7 @@ function assTime(seconds) {
     safe % 60;
 
   return (
-    \`\${hours}:\${String(minutes).padStart(2, "0")}:\${secs.toFixed(2).padStart(5, "0")}\`
+    `${hours}:${String(minutes).padStart(2, "0")}:${secs.toFixed(2).padStart(5, "0")}`
   );
 }
 
@@ -1076,7 +1076,7 @@ async function writeAssCaptions(
   filePath,
   segments
 ) {
-  const header = \`[Script Info]
+  const header = `[Script Info]
 ScriptType: v4.00+
 PlayResX: 1920
 PlayResY: 1080
@@ -1089,7 +1089,7 @@ Style: Property,DejaVu Sans,54,&H00FFFFFF,&H000000FF,&H80000000,&H64000000,-1,0,
 
 [Events]
 Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text
-\`;
+`;
 
   const events =
     segments
@@ -1099,13 +1099,13 @@ Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text
             segment.text
           );
 
-        return \`Dialogue: 0,\${assTime(segment.start)},\${assTime(segment.end)},Property,,0,0,0,,\${safeText}\`;
+        return `Dialogue: 0,${assTime(segment.start)},${assTime(segment.end)},Property,,0,0,0,,${safeText}`;
       })
       .join("\n");
 
   await fs.promises.writeFile(
     filePath,
-    \`\${header}\${events}\n\`,
+    `${header}${events}\n`,
     "utf8"
   );
 }
@@ -1125,7 +1125,7 @@ async function generateElevenLabsNarration({
     await axios({
       method: "POST",
       url:
-        \`https://api.elevenlabs.io/v1/text-to-speech/\${encodeURIComponent(voiceId)}/with-timestamps\`,
+        `https://api.elevenlabs.io/v1/text-to-speech/${encodeURIComponent(voiceId)}/with-timestamps`,
       headers: {
         "xi-api-key":
           process.env.ELEVENLABS_API_KEY,
@@ -1199,9 +1199,9 @@ async function renderBrandIntro({
   const filter =
     [
       "format=yuv420p",
-      \`drawtext=text='\${safeBrand}':fontcolor=0xD4B87A:fontsize=38:x=(w-tw)/2:y=240\`,
-      \`drawtext=text='\${safeAddress}':fontcolor=white:fontsize=64:x=(w-tw)/2:y=420\`,
-      \`drawtext=text='\${safeSub}':fontcolor=0xB8975A:fontsize=25:x=(w-tw)/2:y=530\`
+      `drawtext=text='${safeBrand}':fontcolor=0xD4B87A:fontsize=38:x=(w-tw)/2:y=240`,
+      `drawtext=text='${safeAddress}':fontcolor=white:fontsize=64:x=(w-tw)/2:y=420`,
+      `drawtext=text='${safeSub}':fontcolor=0xB8975A:fontsize=25:x=(w-tw)/2:y=530`
     ].join(",");
 
   await execFileAsync(
@@ -1211,7 +1211,7 @@ async function renderBrandIntro({
       "-f",
       "lavfi",
       "-i",
-      \`color=c=0x1a1714:s=1920x1080:r=\${fps}:d=\${duration}\`,
+      `color=c=0x1a1714:s=1920x1080:r=${fps}:d=${duration}`,
       "-vf",
       filter,
       "-t",
@@ -1278,9 +1278,9 @@ async function renderBeforeAfter9s({
     );
 
   const filter = [
-    \`[0:v]scale=1920:1080:force_original_aspect_ratio=increase,crop=1920:1080,setsar=1,zoompan=z='min(zoom+0.00010,1.010)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=\${beforeFrames}:s=1920x1080:fps=\${fps},drawtext=text='\${safeBeforeLabel}':fontcolor=white:fontsize=40:box=1:boxcolor=black@0.55:boxborderw=16:x=55:y=h-th-55[beforev]\`,
-    \`[1:v]scale=1920:1080:force_original_aspect_ratio=increase,crop=1920:1080,setsar=1,zoompan=z='1+0.25*(3*pow(min(on/(5*\${fps}),1),2)-2*pow(min(on/(5*\${fps}),1),3))':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=\${afterFrames}:s=1920x1080:fps=\${fps},drawtext=text='\${safeAfterLabel}':fontcolor=white:fontsize=40:box=1:boxcolor=black@0.55:boxborderw=16:x=55:y=h-th-55[afterv]\`,
-    \`[beforev][afterv]xfade=transition=wipeleft:duration=\${transition}:offset=\${beforeHold}[outv]\`
+    `[0:v]scale=1920:1080:force_original_aspect_ratio=increase,crop=1920:1080,setsar=1,zoompan=z='min(zoom+0.00010,1.010)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${beforeFrames}:s=1920x1080:fps=${fps},drawtext=text='${safeBeforeLabel}':fontcolor=white:fontsize=40:box=1:boxcolor=black@0.55:boxborderw=16:x=55:y=h-th-55[beforev]`,
+    `[1:v]scale=1920:1080:force_original_aspect_ratio=increase,crop=1920:1080,setsar=1,zoompan=z='1+0.25*(3*pow(min(on/(5*${fps}),1),2)-2*pow(min(on/(5*${fps}),1),3))':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${afterFrames}:s=1920x1080:fps=${fps},drawtext=text='${safeAfterLabel}':fontcolor=white:fontsize=40:box=1:boxcolor=black@0.55:boxborderw=16:x=55:y=h-th-55[afterv]`,
+    `[beforev][afterv]xfade=transition=wipeleft:duration=${transition}:offset=${beforeHold}[outv]`
   ].join(";");
 
   await execFileAsync(
@@ -1341,12 +1341,12 @@ async function renderFinal30s({
       .replace(/:/g, "\\:");
 
   const filter = [
-    \`[0:v]scale=1920:1080:force_original_aspect_ratio=increase,crop=1920:1080,fps=\${fps},setsar=1,setpts=PTS-STARTPTS[v0]\`,
-    \`[1:v]scale=1920:1080:force_original_aspect_ratio=increase,crop=1920:1080,fps=\${fps},setsar=1,setpts=PTS-STARTPTS[v1]\`,
-    \`[2:v]scale=1920:1080:force_original_aspect_ratio=increase,crop=1920:1080,fps=\${fps},setsar=1,setpts=PTS-STARTPTS[v2]\`,
-    \`[3:v]scale=1920:1080:force_original_aspect_ratio=increase,crop=1920:1080,fps=\${fps},setsar=1,setpts=PTS-STARTPTS[v3]\`,
+    `[0:v]scale=1920:1080:force_original_aspect_ratio=increase,crop=1920:1080,fps=${fps},setsar=1,setpts=PTS-STARTPTS[v0]`,
+    `[1:v]scale=1920:1080:force_original_aspect_ratio=increase,crop=1920:1080,fps=${fps},setsar=1,setpts=PTS-STARTPTS[v1]`,
+    `[2:v]scale=1920:1080:force_original_aspect_ratio=increase,crop=1920:1080,fps=${fps},setsar=1,setpts=PTS-STARTPTS[v2]`,
+    `[3:v]scale=1920:1080:force_original_aspect_ratio=increase,crop=1920:1080,fps=${fps},setsar=1,setpts=PTS-STARTPTS[v3]`,
     "[v0][v1][v2][v3]concat=n=4:v=1:a=0[visual]",
-    \`[visual]ass='\${escapedAss}'[video]\`,
+    `[visual]ass='${escapedAss}'[video]`,
     "[4:a]atrim=0:30,asetpts=PTS-STARTPTS,volume=0.20[music]",
     "[5:a]apad=pad_dur=30,atrim=0:30,asetpts=PTS-STARTPTS[narr]",
     "[music][narr]sidechaincompress=threshold=0.012:ratio=8:attack=25:release=450[ducked]",
@@ -1452,7 +1452,7 @@ app.post(
         .json({
           success: false,
           error:
-            \`Missing required fields: \${missing.join(", ")}\`
+            `Missing required fields: ${missing.join(", ")}`
         });
     }
 
@@ -1481,7 +1481,7 @@ app.post(
       prospectFolder.slice(0, 10);
 
     const prospectStoragePrefix =
-      \`ssp-prospects/\${prospectFolder}/\`;
+      `ssp-prospects/${prospectFolder}/`;
 
     const workDir =
       fs.mkdtempSync(
@@ -1559,7 +1559,7 @@ app.post(
       ensureS3Configured();
 
       console.log(
-        \`[PROSPECT 30S] Starting render for \${prospectFolder}\`
+        `[PROSPECT 30S] Starting render for ${prospectFolder}`
       );
 
       await Promise.all([
@@ -1605,7 +1605,7 @@ app.post(
         ctaDuration > 10.5
       ) {
         throw new Error(
-          \`CTA template must be approximately 10 seconds; received \${ctaDuration.toFixed(2)}s\`
+          `CTA template must be approximately 10 seconds; received ${ctaDuration.toFixed(2)}s`
         );
       }
 
@@ -1628,7 +1628,7 @@ app.post(
         narrationDuration > 29.5
       ) {
         throw new Error(
-          \`Narration is too long for a 30-second render (\${narrationDuration.toFixed(2)}s). Shorten the script.\`
+          `Narration is too long for a 30-second render (${narrationDuration.toFixed(2)}s). Shorten the script.`
         );
       }
 
@@ -1708,7 +1708,7 @@ app.post(
       });
 
       const videoKey =
-        \`ssp-prospects/\${prospectFolder}/video-30s.mp4\`;
+        `ssp-prospects/${prospectFolder}/video-30s.mp4`;
 
       const upload =
         await uploadFileToS3({
@@ -1721,7 +1721,7 @@ app.post(
         });
 
       console.log(
-        \`[PROSPECT 30S] Uploaded to S3: \${upload.key}\`
+        `[PROSPECT 30S] Uploaded to S3: ${upload.key}`
       );
 
       return res.json({
