@@ -169,7 +169,7 @@ function makeProspectFolder(
     );
   }
 
-  return `${getPacificRunDate(date)}__${safeStreetAddress}`;
+  return `${getPacificRunDate(date)}-${safeStreetAddress}`;
 }
 
 function ensureS3Configured() {
