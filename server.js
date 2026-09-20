@@ -733,6 +733,1091 @@ app.post(
 );
 
 // ─────────────────────────────────────────────────────────────
+// 30-SECOND PERSONALIZED PROSPECT VIDEO
+// 2s intro + 9s interior + 9s exterior + 10s reusable CTA
+// ElevenLabs v3 narration + burned-in ASS captions + music ducking
+// ─────────────────────────────────────────────────────────────
+
+function ensure30sConfigured() {
+  const required = [
+    "CTA_TEMPLATE_URL",
+    "MUSIC_TRACK_URL",
+    "ELEVENLABS_API_KEY",
+    "ELEVENLABS_VOICE_ID"
+  ];
+
+  const missing = required.filter(
+    name => !process.env[name]
+  );
+
+  if (missing.length) {
+    throw new Error(
+      \`Missing required 30s renderer variables: \${missing.join(", ")}\`
+    );
+  }
+}
+
+async function downloadMedia(
+  url,
+  outputPath,
+  allowedTypes = []
+) {
+  const response = await axios({
+    method: "GET",
+    url,
+    responseType: "arraybuffer",
+    timeout: 60000,
+    maxRedirects: 5,
+    validateStatus: status =>
+      status >= 200 &&
+      status < 300
+  });
+
+  const contentType =
+    String(
+      response.headers["content-type"] ||
+      ""
+    ).toLowerCase();
+
+  if (
+    allowedTypes.length &&
+    !allowedTypes.some(type =>
+      contentType.startsWith(type)
+    )
+  ) {
+    throw new Error(
+      \`Unexpected content type \${contentType || "unknown"} from \${url}\`
+    );
+  }
+
+  const buffer =
+    Buffer.from(response.data);
+
+  if (buffer.length < 1000) {
+    throw new Error(
+      \`Downloaded media is unexpectedly small: \${buffer.length} bytes\`
+    );
+  }
+
+  await fs.promises.writeFile(
+    outputPath,
+    buffer
+  );
+}
+
+async function getMediaDuration(filePath) {
+  const {
+    stdout
+  } = await execFileAsync(
+    "ffprobe",
+    [
+      "-v",
+      "error",
+      "-show_entries",
+      "format=duration",
+      "-of",
+      "default=noprint_wrappers=1:nokey=1",
+      filePath
+    ],
+    {
+      maxBuffer:
+        5 *
+        1024 *
+        1024
+    }
+  );
+
+  const duration =
+    Number(
+      String(stdout).trim()
+    );
+
+  if (
+    !Number.isFinite(duration)
+  ) {
+    throw new Error(
+      \`Could not determine media duration for \${filePath}\`
+    );
+  }
+
+  return duration;
+}
+
+function escapeAssText(value) {
+  return String(value || "")
+    .replace(/\\/g, "\\\\")
+    .replace(/{/g, "\\{")
+    .replace(/}/g, "\\}")
+    .replace(/\r?\n/g, "\\N");
+}
+
+function assTime(seconds) {
+  const safe =
+    Math.max(0, Number(seconds) || 0);
+
+  const hours =
+    Math.floor(safe / 3600);
+
+  const minutes =
+    Math.floor(
+      (safe % 3600) / 60
+    );
+
+  const secs =
+    safe % 60;
+
+  return (
+    \`\${hours}:\${String(minutes).padStart(2, "0")}:\${secs.toFixed(2).padStart(5, "0")}\`
+  );
+}
+
+function getSpokenCharacters(alignment) {
+  if (
+    !alignment ||
+    !Array.isArray(
+      alignment.characters
+    ) ||
+    !Array.isArray(
+      alignment.character_start_times_seconds
+    ) ||
+    !Array.isArray(
+      alignment.character_end_times_seconds
+    )
+  ) {
+    return [];
+  }
+
+  const result = [];
+  let insideTag = false;
+
+  for (
+    let i = 0;
+    i < alignment.characters.length;
+    i += 1
+  ) {
+    const char =
+      alignment.characters[i];
+
+    if (char === "[") {
+      insideTag = true;
+      continue;
+    }
+
+    if (insideTag) {
+      if (char === "]") {
+        insideTag = false;
+      }
+      continue;
+    }
+
+    const start =
+      Number(
+        alignment.character_start_times_seconds[i]
+      );
+
+    const end =
+      Number(
+        alignment.character_end_times_seconds[i]
+      );
+
+    if (
+      !Number.isFinite(start) ||
+      !Number.isFinite(end)
+    ) {
+      continue;
+    }
+
+    result.push({
+      char,
+      start,
+      end
+    });
+  }
+
+  return result;
+}
+
+function buildCaptionSegments(
+  alignment,
+  {
+    maxWords = 7,
+    maxChars = 46,
+    maxDuration = 3.4
+  } = {}
+) {
+  const chars =
+    getSpokenCharacters(
+      alignment
+    );
+
+  if (!chars.length) {
+    return [];
+  }
+
+  const words = [];
+  let current = null;
+
+  function finishWord() {
+    if (
+      current &&
+      current.text.trim()
+    ) {
+      words.push({
+        text:
+          current.text.trim(),
+        start:
+          current.start,
+        end:
+          current.end
+      });
+    }
+
+    current = null;
+  }
+
+  for (const item of chars) {
+    if (/\s/.test(item.char)) {
+      finishWord();
+      continue;
+    }
+
+    if (!current) {
+      current = {
+        text: "",
+        start: item.start,
+        end: item.end
+      };
+    }
+
+    current.text += item.char;
+    current.end =
+      item.end;
+
+    if (
+      /[.!?]/.test(
+        item.char
+      )
+    ) {
+      finishWord();
+    }
+  }
+
+  finishWord();
+
+  const segments = [];
+  let bucket = [];
+
+  function flush() {
+    if (!bucket.length) {
+      return;
+    }
+
+    segments.push({
+      text:
+        bucket
+          .map(word => word.text)
+          .join(" "),
+      start:
+        bucket[0].start,
+      end:
+        bucket[
+          bucket.length - 1
+        ].end
+    });
+
+    bucket = [];
+  }
+
+  for (const word of words) {
+    const candidate =
+      [...bucket, word];
+
+    const candidateText =
+      candidate
+        .map(item => item.text)
+        .join(" ");
+
+    const candidateDuration =
+      candidate[
+        candidate.length - 1
+      ].end -
+      candidate[0].start;
+
+    const shouldFlush =
+      bucket.length &&
+      (
+        candidate.length > maxWords ||
+        candidateText.length > maxChars ||
+        candidateDuration > maxDuration
+      );
+
+    if (shouldFlush) {
+      flush();
+    }
+
+    bucket.push(word);
+
+    if (
+      /[.!?]$/.test(
+        word.text
+      ) &&
+      bucket.length >= 2
+    ) {
+      flush();
+    }
+  }
+
+  flush();
+
+  return segments;
+}
+
+async function writeAssCaptions(
+  filePath,
+  segments
+) {
+  const header = \`[Script Info]
+ScriptType: v4.00+
+PlayResX: 1920
+PlayResY: 1080
+WrapStyle: 2
+ScaledBorderAndShadow: yes
+
+[V4+ Styles]
+Format: Name,Fontname,Fontsize,PrimaryColour,SecondaryColour,OutlineColour,BackColour,Bold,Italic,Underline,StrikeOut,ScaleX,ScaleY,Spacing,Angle,BorderStyle,Outline,Shadow,Alignment,MarginL,MarginR,MarginV,Encoding
+Style: Property,DejaVu Sans,54,&H00FFFFFF,&H000000FF,&H80000000,&H64000000,-1,0,0,0,100,100,0,0,1,3,1,2,130,130,105,1
+
+[Events]
+Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text
+\`;
+
+  const events =
+    segments
+      .map(segment => {
+        const safeText =
+          escapeAssText(
+            segment.text
+          );
+
+        return \`Dialogue: 0,\${assTime(segment.start)},\${assTime(segment.end)},Property,,0,0,0,,\${safeText}\`;
+      })
+      .join("\n");
+
+  await fs.promises.writeFile(
+    filePath,
+    \`\${header}\${events}\n\`,
+    "utf8"
+  );
+}
+
+async function generateElevenLabsNarration({
+  text,
+  outputPath
+}) {
+  const voiceId =
+    process.env.ELEVENLABS_VOICE_ID;
+
+  const modelId =
+    process.env.ELEVENLABS_MODEL_ID ||
+    "eleven_v3";
+
+  const response =
+    await axios({
+      method: "POST",
+      url:
+        \`https://api.elevenlabs.io/v1/text-to-speech/\${encodeURIComponent(voiceId)}/with-timestamps\`,
+      headers: {
+        "xi-api-key":
+          process.env.ELEVENLABS_API_KEY,
+        "Content-Type":
+          "application/json"
+      },
+      data: {
+        text,
+        model_id:
+          modelId,
+        apply_text_normalization:
+          "auto"
+      },
+      timeout: 120000,
+      maxContentLength:
+        50 *
+        1024 *
+        1024
+    });
+
+  if (
+    !response.data ||
+    !response.data.audio_base64
+  ) {
+    throw new Error(
+      "ElevenLabs did not return audio_base64"
+    );
+  }
+
+  const audioBuffer =
+    Buffer.from(
+      response.data.audio_base64,
+      "base64"
+    );
+
+  await fs.promises.writeFile(
+    outputPath,
+    audioBuffer
+  );
+
+  return {
+    alignment:
+      response.data.normalized_alignment ||
+      response.data.alignment ||
+      null,
+    modelId
+  };
+}
+
+async function renderBrandIntro({
+  propertyAddress,
+  outputPath,
+  fps = 30,
+  duration = 2
+}) {
+  const safeAddress =
+    escapeDrawtext(
+      propertyAddress
+    );
+
+  const safeBrand =
+    escapeDrawtext(
+      "SMART STAGE PRO"
+    );
+
+  const safeSub =
+    escapeDrawtext(
+      "A QUICK LOOK AT THIS LISTING"
+    );
+
+  const filter =
+    [
+      "format=yuv420p",
+      \`drawtext=text='\${safeBrand}':fontcolor=0xD4B87A:fontsize=38:x=(w-tw)/2:y=240\`,
+      \`drawtext=text='\${safeAddress}':fontcolor=white:fontsize=64:x=(w-tw)/2:y=420\`,
+      \`drawtext=text='\${safeSub}':fontcolor=0xB8975A:fontsize=25:x=(w-tw)/2:y=530\`
+    ].join(",");
+
+  await execFileAsync(
+    "ffmpeg",
+    [
+      "-y",
+      "-f",
+      "lavfi",
+      "-i",
+      \`color=c=0x1a1714:s=1920x1080:r=\${fps}:d=\${duration}\`,
+      "-vf",
+      filter,
+      "-t",
+      String(duration),
+      "-c:v",
+      "libx264",
+      "-preset",
+      "medium",
+      "-crf",
+      "18",
+      "-pix_fmt",
+      "yuv420p",
+      "-movflags",
+      "+faststart",
+      outputPath
+    ],
+    {
+      maxBuffer:
+        20 *
+        1024 *
+        1024
+    }
+  );
+}
+
+async function renderBeforeAfter9s({
+  beforePath,
+  afterPath,
+  outputPath,
+  beforeLabel,
+  afterLabel,
+  fps = 30
+}) {
+  const beforeHold = 3;
+  const transition = 1;
+  const afterHold = 5;
+
+  const beforeSourceDuration =
+    beforeHold + transition;
+
+  const afterSourceDuration =
+    transition + afterHold;
+
+  const beforeFrames =
+    Math.round(
+      beforeSourceDuration *
+        fps
+    );
+
+  const afterFrames =
+    Math.round(
+      afterSourceDuration *
+        fps
+    );
+
+  const safeBeforeLabel =
+    escapeDrawtext(
+      beforeLabel
+    );
+
+  const safeAfterLabel =
+    escapeDrawtext(
+      afterLabel
+    );
+
+  const filter = [
+    \`[0:v]scale=1920:1080:force_original_aspect_ratio=increase,crop=1920:1080,setsar=1,zoompan=z='min(zoom+0.00010,1.010)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=\${beforeFrames}:s=1920x1080:fps=\${fps},drawtext=text='\${safeBeforeLabel}':fontcolor=white:fontsize=40:box=1:boxcolor=black@0.55:boxborderw=16:x=55:y=h-th-55[beforev]\`,
+    \`[1:v]scale=1920:1080:force_original_aspect_ratio=increase,crop=1920:1080,setsar=1,zoompan=z='1+0.25*(3*pow(min(on/(5*\${fps}),1),2)-2*pow(min(on/(5*\${fps}),1),3))':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=\${afterFrames}:s=1920x1080:fps=\${fps},drawtext=text='\${safeAfterLabel}':fontcolor=white:fontsize=40:box=1:boxcolor=black@0.55:boxborderw=16:x=55:y=h-th-55[afterv]\`,
+    \`[beforev][afterv]xfade=transition=wipeleft:duration=\${transition}:offset=\${beforeHold}[outv]\`
+  ].join(";");
+
+  await execFileAsync(
+    "ffmpeg",
+    [
+      "-y",
+      "-loop",
+      "1",
+      "-i",
+      beforePath,
+      "-loop",
+      "1",
+      "-i",
+      afterPath,
+      "-filter_complex",
+      filter,
+      "-map",
+      "[outv]",
+      "-t",
+      "9",
+      "-c:v",
+      "libx264",
+      "-preset",
+      "medium",
+      "-crf",
+      "18",
+      "-pix_fmt",
+      "yuv420p",
+      "-r",
+      String(fps),
+      "-movflags",
+      "+faststart",
+      outputPath
+    ],
+    {
+      maxBuffer:
+        30 *
+        1024 *
+        1024
+    }
+  );
+}
+
+async function renderFinal30s({
+  introPath,
+  interiorPath,
+  exteriorPath,
+  ctaPath,
+  musicPath,
+  narrationPath,
+  captionsPath,
+  outputPath,
+  fps = 30
+}) {
+  const escapedAss =
+    captionsPath
+      .replace(/\\/g, "/")
+      .replace(/:/g, "\\:");
+
+  const filter = [
+    \`[0:v]scale=1920:1080:force_original_aspect_ratio=increase,crop=1920:1080,fps=\${fps},setsar=1,setpts=PTS-STARTPTS[v0]\`,
+    \`[1:v]scale=1920:1080:force_original_aspect_ratio=increase,crop=1920:1080,fps=\${fps},setsar=1,setpts=PTS-STARTPTS[v1]\`,
+    \`[2:v]scale=1920:1080:force_original_aspect_ratio=increase,crop=1920:1080,fps=\${fps},setsar=1,setpts=PTS-STARTPTS[v2]\`,
+    \`[3:v]scale=1920:1080:force_original_aspect_ratio=increase,crop=1920:1080,fps=\${fps},setsar=1,setpts=PTS-STARTPTS[v3]\`,
+    "[v0][v1][v2][v3]concat=n=4:v=1:a=0[visual]",
+    \`[visual]ass='\${escapedAss}'[video]\`,
+    "[4:a]atrim=0:30,asetpts=PTS-STARTPTS,volume=0.20[music]",
+    "[5:a]apad=pad_dur=30,atrim=0:30,asetpts=PTS-STARTPTS[narr]",
+    "[music][narr]sidechaincompress=threshold=0.012:ratio=8:attack=25:release=450[ducked]",
+    "[ducked][narr]amix=inputs=2:duration=longest:normalize=0,alimiter=limit=0.95,atrim=0:30[aout]"
+  ].join(";");
+
+  await execFileAsync(
+    "ffmpeg",
+    [
+      "-y",
+      "-i",
+      introPath,
+      "-i",
+      interiorPath,
+      "-i",
+      exteriorPath,
+      "-i",
+      ctaPath,
+      "-stream_loop",
+      "-1",
+      "-i",
+      musicPath,
+      "-i",
+      narrationPath,
+      "-filter_complex",
+      filter,
+      "-map",
+      "[video]",
+      "-map",
+      "[aout]",
+      "-t",
+      "30",
+      "-c:v",
+      "libx264",
+      "-preset",
+      "medium",
+      "-crf",
+      "18",
+      "-pix_fmt",
+      "yuv420p",
+      "-r",
+      String(fps),
+      "-c:a",
+      "aac",
+      "-b:a",
+      "192k",
+      "-ar",
+      "48000",
+      "-movflags",
+      "+faststart",
+      outputPath
+    ],
+    {
+      maxBuffer:
+        50 *
+        1024 *
+        1024
+    }
+  );
+}
+
+app.post(
+  "/render-prospect-video-30s",
+  async (req, res) => {
+    const {
+      interior_before_image_url,
+      interior_after_image_url,
+      exterior_before_image_url,
+      exterior_after_image_url,
+      property_address,
+      agent_first_name = "",
+      agent_name = "",
+      prospect_id = "prospect",
+      mls_number = "",
+      interior_room = "interior",
+      exterior_enhancement = "exterior enhancement",
+      narration_script,
+      fps = 30
+    } = req.body || {};
+
+    const required = {
+      interior_before_image_url,
+      interior_after_image_url,
+      exterior_before_image_url,
+      exterior_after_image_url,
+      property_address,
+      narration_script
+    };
+
+    const missing =
+      Object.entries(required)
+        .filter(
+          ([, value]) =>
+            !String(value || "").trim()
+        )
+        .map(
+          ([name]) => name
+        );
+
+    if (missing.length) {
+      return res
+        .status(400)
+        .json({
+          success: false,
+          error:
+            \`Missing required fields: \${missing.join(", ")}\`
+        });
+    }
+
+    const frameRate =
+      Number(fps);
+
+    if (
+      !Number.isFinite(frameRate) ||
+      frameRate <= 0
+    ) {
+      return res
+        .status(400)
+        .json({
+          success: false,
+          error:
+            "fps must be greater than 0"
+        });
+    }
+
+    const prospectFolder =
+      makeProspectFolder(
+        property_address
+      );
+
+    const prospectRunDate =
+      prospectFolder.slice(0, 10);
+
+    const prospectStoragePrefix =
+      \`ssp-prospects/\${prospectFolder}/\`;
+
+    const workDir =
+      fs.mkdtempSync(
+        path.join(
+          os.tmpdir(),
+          "ssp-prospect-30s-"
+        )
+      );
+
+    const paths = {
+      interiorBefore:
+        path.join(
+          workDir,
+          "interior-before.jpg"
+        ),
+      interiorAfter:
+        path.join(
+          workDir,
+          "interior-after.jpg"
+        ),
+      exteriorBefore:
+        path.join(
+          workDir,
+          "exterior-before.jpg"
+        ),
+      exteriorAfter:
+        path.join(
+          workDir,
+          "exterior-after.jpg"
+        ),
+      cta:
+        path.join(
+          workDir,
+          "cta.mp4"
+        ),
+      music:
+        path.join(
+          workDir,
+          "music.mp3"
+        ),
+      narration:
+        path.join(
+          workDir,
+          "narration.mp3"
+        ),
+      captions:
+        path.join(
+          workDir,
+          "captions.ass"
+        ),
+      intro:
+        path.join(
+          workDir,
+          "intro.mp4"
+        ),
+      interior:
+        path.join(
+          workDir,
+          "interior.mp4"
+        ),
+      exterior:
+        path.join(
+          workDir,
+          "exterior.mp4"
+        ),
+      output:
+        path.join(
+          workDir,
+          "prospect-30s.mp4"
+        )
+    };
+
+    try {
+      ensure30sConfigured();
+      ensureS3Configured();
+
+      console.log(
+        \`[PROSPECT 30S] Starting render for \${prospectFolder}\`
+      );
+
+      await Promise.all([
+        downloadMedia(
+          interior_before_image_url,
+          paths.interiorBefore,
+          ["image/"]
+        ),
+        downloadMedia(
+          interior_after_image_url,
+          paths.interiorAfter,
+          ["image/"]
+        ),
+        downloadMedia(
+          exterior_before_image_url,
+          paths.exteriorBefore,
+          ["image/"]
+        ),
+        downloadMedia(
+          exterior_after_image_url,
+          paths.exteriorAfter,
+          ["image/"]
+        ),
+        downloadMedia(
+          process.env.CTA_TEMPLATE_URL,
+          paths.cta,
+          ["video/"]
+        ),
+        downloadMedia(
+          process.env.MUSIC_TRACK_URL,
+          paths.music,
+          ["audio/", "application/octet-stream"]
+        )
+      ]);
+
+      const ctaDuration =
+        await getMediaDuration(
+          paths.cta
+        );
+
+      if (
+        ctaDuration < 9.5 ||
+        ctaDuration > 10.5
+      ) {
+        throw new Error(
+          \`CTA template must be approximately 10 seconds; received \${ctaDuration.toFixed(2)}s\`
+        );
+      }
+
+      const narration =
+        await generateElevenLabsNarration({
+          text:
+            String(
+              narration_script
+            ),
+          outputPath:
+            paths.narration
+        });
+
+      const narrationDuration =
+        await getMediaDuration(
+          paths.narration
+        );
+
+      if (
+        narrationDuration > 29.5
+      ) {
+        throw new Error(
+          \`Narration is too long for a 30-second render (\${narrationDuration.toFixed(2)}s). Shorten the script.\`
+        );
+      }
+
+      const captionSegments =
+        buildCaptionSegments(
+          narration.alignment
+        );
+
+      await writeAssCaptions(
+        paths.captions,
+        captionSegments
+      );
+
+      await renderBrandIntro({
+        propertyAddress:
+          property_address,
+        outputPath:
+          paths.intro,
+        fps:
+          frameRate,
+        duration:
+          2
+      });
+
+      await renderBeforeAfter9s({
+        beforePath:
+          paths.interiorBefore,
+        afterPath:
+          paths.interiorAfter,
+        outputPath:
+          paths.interior,
+        beforeLabel:
+          "ORIGINAL LISTING PHOTO",
+        afterLabel:
+          "VIRTUALLY STAGED",
+        fps:
+          frameRate
+      });
+
+      await renderBeforeAfter9s({
+        beforePath:
+          paths.exteriorBefore,
+        afterPath:
+          paths.exteriorAfter,
+        outputPath:
+          paths.exterior,
+        beforeLabel:
+          "ORIGINAL EXTERIOR",
+        afterLabel:
+          String(
+            exterior_enhancement ||
+            "EXTERIOR ENHANCEMENT"
+          ).toUpperCase(),
+        fps:
+          frameRate
+      });
+
+      await renderFinal30s({
+        introPath:
+          paths.intro,
+        interiorPath:
+          paths.interior,
+        exteriorPath:
+          paths.exterior,
+        ctaPath:
+          paths.cta,
+        musicPath:
+          paths.music,
+        narrationPath:
+          paths.narration,
+        captionsPath:
+          paths.captions,
+        outputPath:
+          paths.output,
+        fps:
+          frameRate
+      });
+
+      const videoKey =
+        \`ssp-prospects/\${prospectFolder}/video-30s.mp4\`;
+
+      const upload =
+        await uploadFileToS3({
+          filePath:
+            paths.output,
+          key:
+            videoKey,
+          contentType:
+            "video/mp4"
+        });
+
+      console.log(
+        \`[PROSPECT 30S] Uploaded to S3: \${upload.key}\`
+      );
+
+      return res.json({
+        success: true,
+        video_url:
+          upload.url,
+        public_id:
+          upload.key,
+        prospect: {
+          prospect_id,
+          agent_first_name,
+          agent_name,
+          property_address,
+          mls_number,
+          interior_room,
+          exterior_enhancement,
+          run_date:
+            prospectRunDate,
+          folder_name:
+            prospectFolder,
+          storage_prefix:
+            prospectStoragePrefix
+        },
+        render: {
+          version:
+            "ssp-prospect-30s-v1",
+          output_duration:
+            30,
+          fps:
+            frameRate,
+          width:
+            1920,
+          height:
+            1080,
+          intro_duration:
+            2,
+          interior_duration:
+            9,
+          exterior_duration:
+            9,
+          cta_duration:
+            Number(
+              ctaDuration.toFixed(3)
+            ),
+          narration_duration:
+            Number(
+              narrationDuration.toFixed(3)
+            ),
+          caption_count:
+            captionSegments.length,
+          elevenlabs_model:
+            narration.modelId,
+          music_ducking:
+            true,
+          final_frame:
+            "cta_hold_no_fade"
+        }
+      });
+    } catch (error) {
+      console.error(
+        "[PROSPECT 30S] Render failed:",
+        error.response?.data ||
+          error.stderr ||
+          error.message ||
+          error
+      );
+
+      return res
+        .status(500)
+        .json({
+          success: false,
+          error:
+            error.response?.data?.detail ||
+            error.message ||
+            "30-second prospect video rendering failed"
+        });
+    } finally {
+      try {
+        fs.rmSync(
+          workDir,
+          {
+            recursive: true,
+            force: true
+          }
+        );
+      } catch (cleanupError) {
+        console.error(
+          "[PROSPECT 30S] Cleanup failed:",
+          cleanupError.message
+        );
+      }
+    }
+  }
+);
+
+// ─────────────────────────────────────────────────────────────
 // PROSPECT EMAIL THUMBNAIL
 // MATCHED FILL + CENTER CROP
 // ─────────────────────────────────────────────────────────────
