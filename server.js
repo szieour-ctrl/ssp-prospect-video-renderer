@@ -1659,11 +1659,17 @@ async function renderFinal30s({
 
 function ensureV2Configured() {
   const required = [
-    "MUSIC_TRACK_URL",
     "ELEVENLABS_API_KEY",
     "ELEVENLABS_VOICE_ID",
     "CTA_V2_TEMPLATE_URL"
   ];
+
+  if (
+    !process.env.MUSIC_TRACK_V2_URL &&
+    !process.env.MUSIC_TRACK_URL
+  ) {
+    required.push("MUSIC_TRACK_V2_URL");
+  }
 
   const missing =
     required.filter(
@@ -1991,6 +1997,7 @@ app.post(
           ["video/"]
         ),
         downloadMedia(
+          process.env.MUSIC_TRACK_V2_URL ||
           process.env.MUSIC_TRACK_URL,
           paths.music,
           ["audio/", "application/octet-stream"]
