@@ -1175,6 +1175,190 @@ async function generateElevenLabsNarration({
   };
 }
 
+
+function countSpokenTextCharacters(value) {
+  const text =
+    String(value || "");
+
+  let insideTag = false;
+  let count = 0;
+
+  for (const char of text) {
+    if (char === "[") {
+      insideTag = true;
+      continue;
+    }
+
+    if (insideTag) {
+      if (char === "]") {
+        insideTag = false;
+      }
+      continue;
+    }
+
+    count += 1;
+  }
+
+  return count;
+}
+
+function getCombinedNarrationSplitTime(
+  alignment,
+  firstNarrationText
+) {
+  const spoken =
+    getSpokenCharacters(
+      alignment
+    );
+
+  const firstCount =
+    countSpokenTextCharacters(
+      firstNarrationText
+    );
+
+  if (
+    !spoken.length ||
+    firstCount < 1
+  ) {
+    throw new Error(
+      "Could not determine intro narration split point."
+    );
+  }
+
+  const boundaryIndex =
+    Math.min(
+      firstCount,
+      spoken.length - 1
+    );
+
+  const next =
+    spoken[boundaryIndex];
+
+  const previous =
+    spoken[
+      Math.max(
+        0,
+        boundaryIndex - 1
+      )
+    ];
+
+  const split =
+    next &&
+    Number.isFinite(next.start)
+      ? next.start
+      : previous.end;
+
+  if (
+    !Number.isFinite(split) ||
+    split <= 0
+  ) {
+    throw new Error(
+      "Invalid intro narration split time."
+    );
+  }
+
+  return split;
+}
+
+async function splitNarrationAudio({
+  inputPath,
+  splitTime,
+  output1Path,
+  output2Path
+}) {
+  await Promise.all([
+    execFileAsync(
+      "ffmpeg",
+      [
+        "-y",
+        "-i",
+        inputPath,
+        "-t",
+        String(splitTime),
+        "-c:a",
+        "pcm_s16le",
+        output1Path
+      ],
+      {
+        maxBuffer:
+          20 *
+          1024 *
+          1024
+      }
+    ),
+
+    execFileAsync(
+      "ffmpeg",
+      [
+        "-y",
+        "-ss",
+        String(splitTime),
+        "-i",
+        inputPath,
+        "-c:a",
+        "pcm_s16le",
+        output2Path
+      ],
+      {
+        maxBuffer:
+          20 *
+          1024 *
+          1024
+      }
+    )
+  ]);
+}
+
+function splitCaptionSegments(
+  segments,
+  splitTime
+) {
+  const first = [];
+  const second = [];
+
+  for (const segment of segments) {
+    if (
+      segment.start <
+      splitTime
+    ) {
+      first.push({
+        text:
+          segment.text,
+        start:
+          segment.start,
+        end:
+          Math.min(
+            segment.end,
+            splitTime
+          )
+      });
+      continue;
+    }
+
+    second.push({
+      text:
+        segment.text,
+      start:
+        Math.max(
+          0,
+          segment.start -
+          splitTime
+        ),
+      end:
+        Math.max(
+          0,
+          segment.end -
+          splitTime
+        )
+    });
+  }
+
+  return {
+    first,
+    second
+  };
+}
+
 async function renderBrandIntro({
   propertyAddress,
   outputPath,
@@ -2383,15 +2567,20 @@ app.post(
           workDir,
           "music.mp3"
         ),
+      narrationCombined:
+        path.join(
+          workDir,
+          "narration-intro-combined.mp3"
+        ),
       narration1:
         path.join(
           workDir,
-          "narration-card-1.mp3"
+          "narration-card-1.wav"
         ),
       narration2:
         path.join(
           workDir,
-          "narration-card-2.mp3"
+          "narration-card-2.wav"
         ),
       captions1:
         path.join(
@@ -2501,24 +2690,33 @@ app.post(
         );
       }
 
-      const [
-        narrationResult1,
-        narrationResult2
-      ] =
-        await Promise.all([
-          generateElevenLabsNarration({
-            text:
-              narration1,
-            outputPath:
-              paths.narration1
-          }),
-          generateElevenLabsNarration({
-            text:
-              narration2,
-            outputPath:
-              paths.narration2
-          })
-        ]);
+      const combinedNarrationText =
+        `${narration1} ${narration2}`;
+
+      const narrationResult =
+        await generateElevenLabsNarration({
+          text:
+            combinedNarrationText,
+          outputPath:
+            paths.narrationCombined
+        });
+
+      const narrationSplitTime =
+        getCombinedNarrationSplitTime(
+          narrationResult.alignment,
+          narration1
+        );
+
+      await splitNarrationAudio({
+        inputPath:
+          paths.narrationCombined,
+        splitTime:
+          narrationSplitTime,
+        output1Path:
+          paths.narration1,
+        output2Path:
+          paths.narration2
+      });
 
       const [
         narrationDuration1,
@@ -2533,14 +2731,20 @@ app.post(
           )
         ]);
 
-      const captionSegments1 =
+      const combinedCaptionSegments =
         buildCaptionSegments(
-          narrationResult1.alignment
+          narrationResult.alignment
         );
 
-      const captionSegments2 =
-        buildCaptionSegments(
-          narrationResult2.alignment
+      const {
+        first:
+          captionSegments1,
+        second:
+          captionSegments2
+      } =
+        splitCaptionSegments(
+          combinedCaptionSegments,
+          narrationSplitTime
         );
 
       await Promise.all([
@@ -2751,7 +2955,9 @@ app.post(
           music_ducking:
             true,
           elevenlabs_model:
-            narrationResult1.modelId,
+            narrationResult.modelId,
+          intro_tts_mode:
+            "single_generation_split",
           final_word_rule:
             "last word...[pauses]"
         }
