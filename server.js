@@ -1656,6 +1656,160 @@ async function renderFinal30s({
   );
 }
 
+
+function ensureV2Configured() {
+  const required = [
+    "MUSIC_TRACK_URL",
+    "ELEVENLABS_API_KEY",
+    "ELEVENLABS_VOICE_ID",
+    "CTA_V2_TEMPLATE_URL"
+  ];
+
+  const missing =
+    required.filter(
+      name => !process.env[name]
+    );
+
+  if (missing.length) {
+    throw new Error(
+      \`Missing required V2 renderer variables: \${missing.join(", ")}\`
+    );
+  }
+}
+
+async function mediaHasAudio(filePath) {
+  try {
+    const { stdout } =
+      await execFileAsync(
+        "ffprobe",
+        [
+          "-v",
+          "error",
+          "-select_streams",
+          "a:0",
+          "-show_entries",
+          "stream=index",
+          "-of",
+          "csv=p=0",
+          filePath
+        ],
+        {
+          maxBuffer:
+            5 *
+            1024 *
+            1024
+        }
+      );
+
+    return Boolean(
+      String(stdout || "").trim()
+    );
+  } catch {
+    return false;
+  }
+}
+
+async function renderFinalV2({
+  card1Path,
+  card2Path,
+  interiorPath,
+  exteriorPath,
+  ctaPath,
+  musicPath,
+  outputPath,
+  card1Duration,
+  card2Duration,
+  ctaDuration,
+  fps = 30
+}) {
+  const transformDuration = 18;
+  const totalDuration =
+    card1Duration +
+    card2Duration +
+    transformDuration +
+    ctaDuration;
+
+  const filter = [
+    \`[0:v]scale=1920:1080:force_original_aspect_ratio=increase,crop=1920:1080,fps=\${fps},setsar=1,setpts=PTS-STARTPTS[v0]\`,
+    \`[1:v]scale=1920:1080:force_original_aspect_ratio=increase,crop=1920:1080,fps=\${fps},setsar=1,setpts=PTS-STARTPTS[v1]\`,
+    \`[2:v]scale=1920:1080:force_original_aspect_ratio=increase,crop=1920:1080,fps=\${fps},setsar=1,setpts=PTS-STARTPTS[v2]\`,
+    \`[3:v]scale=1920:1080:force_original_aspect_ratio=increase,crop=1920:1080,fps=\${fps},setsar=1,setpts=PTS-STARTPTS[v3]\`,
+    \`[4:v]scale=1920:1080:force_original_aspect_ratio=increase,crop=1920:1080,fps=\${fps},setsar=1,setpts=PTS-STARTPTS[v4]\`,
+    "[v0][v1][v2][v3][v4]concat=n=5:v=1:a=0[video]",
+
+    \`[0:a]aresample=48000,aformat=channel_layouts=stereo,apad=pad_dur=1,atrim=0:\${card1Duration},asetpts=PTS-STARTPTS[a0]\`,
+    \`[1:a]aresample=48000,aformat=channel_layouts=stereo,apad=pad_dur=1,atrim=0:\${card2Duration},asetpts=PTS-STARTPTS[a1]\`,
+    \`anullsrc=r=48000:cl=stereo:d=\${transformDuration}[asilence]\`,
+    \`[4:a]aresample=48000,aformat=channel_layouts=stereo,apad=pad_dur=1,atrim=0:\${ctaDuration},asetpts=PTS-STARTPTS[a4]\`,
+    "[a0][a1][asilence][a4]concat=n=4:v=0:a=1[narration]",
+    \`[5:a]aresample=48000,aformat=channel_layouts=stereo,atrim=0:\${totalDuration},asetpts=PTS-STARTPTS,volume=0.24[music]\`,
+    "[narration]asplit=2[narr_sc][narr_mix]",
+    "[music][narr_sc]sidechaincompress=threshold=0.012:ratio=8:attack=25:release=450[ducked]",
+    \`[ducked][narr_mix]amix=inputs=2:duration=longest:normalize=0,alimiter=limit=0.95,atrim=0:\${totalDuration}[aout]\`
+  ].join(";");
+
+  await execFileAsync(
+    "ffmpeg",
+    [
+      "-y",
+      "-i",
+      card1Path,
+      "-i",
+      card2Path,
+      "-i",
+      interiorPath,
+      "-i",
+      exteriorPath,
+      "-i",
+      ctaPath,
+      "-stream_loop",
+      "-1",
+      "-i",
+      musicPath,
+      "-filter_complex",
+      filter,
+      "-map",
+      "[video]",
+      "-map",
+      "[aout]",
+      "-t",
+      String(totalDuration),
+      "-c:v",
+      "libx264",
+      "-preset",
+      "medium",
+      "-crf",
+      "21",
+      "-maxrate",
+      "1900k",
+      "-bufsize",
+      "3800k",
+      "-pix_fmt",
+      "yuv420p",
+      "-r",
+      String(fps),
+      "-c:a",
+      "aac",
+      "-b:a",
+      "128k",
+      "-ar",
+      "48000",
+      "-movflags",
+      "+faststart",
+      outputPath
+    ],
+    {
+      maxBuffer:
+        70 *
+        1024 *
+        1024
+    }
+  );
+
+  return totalDuration;
+}
+
+
 app.post(
   "/render-prospect-video-30s",
   async (req, res) => {
@@ -2065,6 +2219,531 @@ app.post(
   }
 );
 
+
+
+// ─────────────────────────────────────────────────────────────
+// PROSPECT VIDEO V2
+// Dynamic intro + 2 transformations + reusable CTA
+// ─────────────────────────────────────────────────────────────
+
+app.post(
+  "/render-prospect-video-v2",
+  async (req, res) => {
+    const {
+      prospect_id = "prospect",
+      agent_first_name = "",
+      agent_name = "",
+      property_address = "",
+      mls_number = "",
+      campaign_tag = "",
+      interior_before_image_url = "",
+      interior_after_image_url = "",
+      exterior_before_image_url = "",
+      exterior_after_image_url = "",
+      card_1 = {},
+      card_2 = {},
+      narration_card_1 = "",
+      narration_card_2 = "",
+      fps = 30
+    } = req.body || {};
+
+    const narration1 =
+      ensureElevenLabsPauseTail(
+        narration_card_1 ||
+        card_1.narration
+      );
+
+    const narration2 =
+      ensureElevenLabsPauseTail(
+        narration_card_2 ||
+        card_2.narration
+      );
+
+    const required = {
+      prospect_id,
+      property_address,
+      interior_before_image_url,
+      interior_after_image_url,
+      exterior_before_image_url,
+      exterior_after_image_url,
+      narration_card_1:
+        narration1,
+      narration_card_2:
+        narration2
+    };
+
+    const missing =
+      Object.entries(required)
+        .filter(
+          ([, value]) =>
+            !String(value || "").trim()
+        )
+        .map(([name]) => name);
+
+    if (missing.length) {
+      return res
+        .status(400)
+        .json({
+          success: false,
+          error:
+            \`Missing required fields: \${missing.join(", ")}\`
+        });
+    }
+
+    const frameRate =
+      Number(fps);
+
+    if (
+      !Number.isFinite(frameRate) ||
+      frameRate <= 0
+    ) {
+      return res
+        .status(400)
+        .json({
+          success: false,
+          error:
+            "fps must be greater than 0"
+        });
+    }
+
+    const prospectFolder =
+      makeProspectFolder(
+        property_address
+      );
+
+    const prospectRunDate =
+      prospectFolder.slice(0, 10);
+
+    const prospectStoragePrefix =
+      \`ssp-prospects/\${prospectFolder}/\`;
+
+    const workDir =
+      fs.mkdtempSync(
+        path.join(
+          os.tmpdir(),
+          "ssp-prospect-v2-"
+        )
+      );
+
+    const paths = {
+      interiorBefore:
+        path.join(
+          workDir,
+          "interior-before.jpg"
+        ),
+      interiorAfter:
+        path.join(
+          workDir,
+          "interior-after.jpg"
+        ),
+      exteriorBefore:
+        path.join(
+          workDir,
+          "exterior-before.jpg"
+        ),
+      exteriorAfter:
+        path.join(
+          workDir,
+          "exterior-after.jpg"
+        ),
+      cta:
+        path.join(
+          workDir,
+          "cta-v2.mp4"
+        ),
+      music:
+        path.join(
+          workDir,
+          "music.mp3"
+        ),
+      narration1:
+        path.join(
+          workDir,
+          "narration-card-1.mp3"
+        ),
+      narration2:
+        path.join(
+          workDir,
+          "narration-card-2.mp3"
+        ),
+      captions1:
+        path.join(
+          workDir,
+          "captions-card-1.ass"
+        ),
+      captions2:
+        path.join(
+          workDir,
+          "captions-card-2.ass"
+        ),
+      card1:
+        path.join(
+          workDir,
+          "intro-card-1.mp4"
+        ),
+      card2:
+        path.join(
+          workDir,
+          "intro-card-2.mp4"
+        ),
+      interior:
+        path.join(
+          workDir,
+          "interior.mp4"
+        ),
+      exterior:
+        path.join(
+          workDir,
+          "exterior.mp4"
+        ),
+      output:
+        path.join(
+          workDir,
+          "prospect-v2.mp4"
+        )
+    };
+
+    try {
+      ensureV2Configured();
+      ensureS3Configured();
+
+      console.log(
+        \`[PROSPECT V2] Starting render for \${prospectFolder}\`
+      );
+
+      await Promise.all([
+        downloadMedia(
+          interior_before_image_url,
+          paths.interiorBefore,
+          ["image/"]
+        ),
+        downloadMedia(
+          interior_after_image_url,
+          paths.interiorAfter,
+          ["image/"]
+        ),
+        downloadMedia(
+          exterior_before_image_url,
+          paths.exteriorBefore,
+          ["image/"]
+        ),
+        downloadMedia(
+          exterior_after_image_url,
+          paths.exteriorAfter,
+          ["image/"]
+        ),
+        downloadMedia(
+          process.env.CTA_V2_TEMPLATE_URL,
+          paths.cta,
+          ["video/", "application/octet-stream"]
+        ),
+        downloadMedia(
+          process.env.MUSIC_TRACK_URL,
+          paths.music,
+          ["audio/", "application/octet-stream"]
+        )
+      ]);
+
+      if (
+        !(await mediaHasAudio(paths.cta))
+      ) {
+        throw new Error(
+          "CTA_V2_TEMPLATE_URL must point to a CTA MP4 that already contains the reusable CTA narration audio."
+        );
+      }
+
+      const ctaDuration =
+        await getMediaDuration(
+          paths.cta
+        );
+
+      const [
+        narrationResult1,
+        narrationResult2
+      ] =
+        await Promise.all([
+          generateElevenLabsNarration({
+            text:
+              narration1,
+            outputPath:
+              paths.narration1
+          }),
+          generateElevenLabsNarration({
+            text:
+              narration2,
+            outputPath:
+              paths.narration2
+          })
+        ]);
+
+      const [
+        narrationDuration1,
+        narrationDuration2
+      ] =
+        await Promise.all([
+          getMediaDuration(
+            paths.narration1
+          ),
+          getMediaDuration(
+            paths.narration2
+          )
+        ]);
+
+      const captionSegments1 =
+        buildCaptionSegments(
+          narrationResult1.alignment
+        );
+
+      const captionSegments2 =
+        buildCaptionSegments(
+          narrationResult2.alignment
+        );
+
+      await Promise.all([
+        writeAssCaptions(
+          paths.captions1,
+          captionSegments1
+        ),
+        writeAssCaptions(
+          paths.captions2,
+          captionSegments2
+        )
+      ]);
+
+      const cardDuration1 =
+        Number(
+          (
+            narrationDuration1 +
+            0.4
+          ).toFixed(3)
+        );
+
+      const cardDuration2 =
+        Number(
+          (
+            narrationDuration2 +
+            0.4
+          ).toFixed(3)
+        );
+
+      await Promise.all([
+        renderDynamicIntroCard({
+          variant: 1,
+          propertyAddress:
+            property_address,
+          card:
+            card_1,
+          narrationPath:
+            paths.narration1,
+          captionsPath:
+            paths.captions1,
+          outputPath:
+            paths.card1,
+          duration:
+            cardDuration1,
+          fps:
+            frameRate
+        }),
+
+        renderDynamicIntroCard({
+          variant: 2,
+          propertyAddress:
+            property_address,
+          card:
+            card_2,
+          narrationPath:
+            paths.narration2,
+          captionsPath:
+            paths.captions2,
+          outputPath:
+            paths.card2,
+          duration:
+            cardDuration2,
+          fps:
+            frameRate
+        }),
+
+        renderBeforeAfter9s({
+          beforePath:
+            paths.interiorBefore,
+          afterPath:
+            paths.interiorAfter,
+          outputPath:
+            paths.interior,
+          beforeLabel:
+            card_2.interior_original_label ||
+            "ORIGINAL LISTING PHOTO",
+          afterLabel:
+            card_2.interior_final_label ||
+            "VIRTUALLY STAGED",
+          fps:
+            frameRate
+        }),
+
+        renderBeforeAfter9s({
+          beforePath:
+            paths.exteriorBefore,
+          afterPath:
+            paths.exteriorAfter,
+          outputPath:
+            paths.exterior,
+          beforeLabel:
+            card_2.exterior_original_label ||
+            "ORIGINAL EXTERIOR",
+          afterLabel:
+            (
+              Array.isArray(
+                card_2.exterior_final_labels
+              ) &&
+              card_2.exterior_final_labels.length
+            )
+              ? card_2.exterior_final_labels.join(" • ")
+              : "EXTERIOR ENHANCEMENT",
+          fps:
+            frameRate
+        })
+      ]);
+
+      const outputDuration =
+        await renderFinalV2({
+          card1Path:
+            paths.card1,
+          card2Path:
+            paths.card2,
+          interiorPath:
+            paths.interior,
+          exteriorPath:
+            paths.exterior,
+          ctaPath:
+            paths.cta,
+          musicPath:
+            paths.music,
+          outputPath:
+            paths.output,
+          card1Duration,
+          card2Duration,
+          ctaDuration,
+          fps:
+            frameRate
+        });
+
+      const videoKey =
+        \`ssp-prospects/\${prospectFolder}/video-v2.mp4\`;
+
+      const upload =
+        await uploadFileToS3({
+          filePath:
+            paths.output,
+          key:
+            videoKey,
+          contentType:
+            "video/mp4"
+        });
+
+      console.log(
+        \`[PROSPECT V2] Uploaded to S3: \${upload.key}\`
+      );
+
+      return res.json({
+        success: true,
+        video_url:
+          upload.url,
+        public_id:
+          upload.key,
+        thumbnail_url:
+          "",
+        thumbnail_public_id:
+          "",
+        prospect: {
+          prospect_id,
+          agent_first_name,
+          agent_name,
+          property_address,
+          mls_number,
+          campaign_tag,
+          run_date:
+            prospectRunDate,
+          folder_name:
+            prospectFolder,
+          storage_prefix:
+            prospectStoragePrefix
+        },
+        render: {
+          version:
+            "ssp-prospect-v2",
+          output_duration:
+            Number(
+              outputDuration.toFixed(3)
+            ),
+          intro_duration:
+            Number(
+              (
+                cardDuration1 +
+                cardDuration2
+              ).toFixed(3)
+            ),
+          card_1_duration:
+            cardDuration1,
+          card_2_duration:
+            cardDuration2,
+          interior_duration:
+            9,
+          exterior_duration:
+            9,
+          cta_duration:
+            Number(
+              ctaDuration.toFixed(3)
+            ),
+          fps:
+            frameRate,
+          width:
+            1920,
+          height:
+            1080,
+          music_ducking:
+            true,
+          elevenlabs_model:
+            narrationResult1.modelId,
+          final_word_rule:
+            "last word...[pauses]"
+        }
+      });
+    } catch (error) {
+      console.error(
+        "[PROSPECT V2] Render failed:",
+        error.response?.data ||
+          error.stderr ||
+          error.message ||
+          error
+      );
+
+      return res
+        .status(500)
+        .json({
+          success: false,
+          error:
+            error.response?.data?.detail ||
+            error.message ||
+            "V2 prospect video rendering failed"
+        });
+    } finally {
+      try {
+        fs.rmSync(
+          workDir,
+          {
+            recursive: true,
+            force: true
+          }
+        );
+      } catch (cleanupError) {
+        console.error(
+          "[PROSPECT V2] Cleanup failed:",
+          cleanupError.message
+        );
+      }
+    }
+  }
+);
 
 // ─────────────────────────────────────────────────────────────
 // TEMP TEST: TWO-CARD DYNAMIC INTRO
