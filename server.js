@@ -1672,7 +1672,7 @@ function ensureV2Configured() {
 
   if (missing.length) {
     throw new Error(
-      \`Missing required V2 renderer variables: \${missing.join(", ")}\`
+      `Missing required V2 renderer variables: ${missing.join(", ")}`
     );
   }
 }
@@ -1730,22 +1730,22 @@ async function renderFinalV2({
     ctaDuration;
 
   const filter = [
-    \`[0:v]scale=1920:1080:force_original_aspect_ratio=increase,crop=1920:1080,fps=\${fps},setsar=1,setpts=PTS-STARTPTS[v0]\`,
-    \`[1:v]scale=1920:1080:force_original_aspect_ratio=increase,crop=1920:1080,fps=\${fps},setsar=1,setpts=PTS-STARTPTS[v1]\`,
-    \`[2:v]scale=1920:1080:force_original_aspect_ratio=increase,crop=1920:1080,fps=\${fps},setsar=1,setpts=PTS-STARTPTS[v2]\`,
-    \`[3:v]scale=1920:1080:force_original_aspect_ratio=increase,crop=1920:1080,fps=\${fps},setsar=1,setpts=PTS-STARTPTS[v3]\`,
-    \`[4:v]scale=1920:1080:force_original_aspect_ratio=increase,crop=1920:1080,fps=\${fps},setsar=1,setpts=PTS-STARTPTS[v4]\`,
+    `[0:v]scale=1920:1080:force_original_aspect_ratio=increase,crop=1920:1080,fps=${fps},setsar=1,setpts=PTS-STARTPTS[v0]`,
+    `[1:v]scale=1920:1080:force_original_aspect_ratio=increase,crop=1920:1080,fps=${fps},setsar=1,setpts=PTS-STARTPTS[v1]`,
+    `[2:v]scale=1920:1080:force_original_aspect_ratio=increase,crop=1920:1080,fps=${fps},setsar=1,setpts=PTS-STARTPTS[v2]`,
+    `[3:v]scale=1920:1080:force_original_aspect_ratio=increase,crop=1920:1080,fps=${fps},setsar=1,setpts=PTS-STARTPTS[v3]`,
+    `[4:v]scale=1920:1080:force_original_aspect_ratio=increase,crop=1920:1080,fps=${fps},setsar=1,setpts=PTS-STARTPTS[v4]`,
     "[v0][v1][v2][v3][v4]concat=n=5:v=1:a=0[video]",
 
-    \`[0:a]aresample=48000,aformat=channel_layouts=stereo,apad=pad_dur=1,atrim=0:\${card1Duration},asetpts=PTS-STARTPTS[a0]\`,
-    \`[1:a]aresample=48000,aformat=channel_layouts=stereo,apad=pad_dur=1,atrim=0:\${card2Duration},asetpts=PTS-STARTPTS[a1]\`,
-    \`anullsrc=r=48000:cl=stereo:d=\${transformDuration}[asilence]\`,
-    \`[4:a]aresample=48000,aformat=channel_layouts=stereo,apad=pad_dur=1,atrim=0:\${ctaDuration},asetpts=PTS-STARTPTS[a4]\`,
+    `[0:a]aresample=48000,aformat=channel_layouts=stereo,apad=pad_dur=1,atrim=0:${card1Duration},asetpts=PTS-STARTPTS[a0]`,
+    `[1:a]aresample=48000,aformat=channel_layouts=stereo,apad=pad_dur=1,atrim=0:${card2Duration},asetpts=PTS-STARTPTS[a1]`,
+    `anullsrc=r=48000:cl=stereo:d=${transformDuration}[asilence]`,
+    `[4:a]aresample=48000,aformat=channel_layouts=stereo,apad=pad_dur=1,atrim=0:${ctaDuration},asetpts=PTS-STARTPTS[a4]`,
     "[a0][a1][asilence][a4]concat=n=4:v=0:a=1[narration]",
-    \`[5:a]aresample=48000,aformat=channel_layouts=stereo,atrim=0:\${totalDuration},asetpts=PTS-STARTPTS,volume=0.24[music]\`,
+    `[5:a]aresample=48000,aformat=channel_layouts=stereo,atrim=0:${totalDuration},asetpts=PTS-STARTPTS,volume=0.24[music]`,
     "[narration]asplit=2[narr_sc][narr_mix]",
     "[music][narr_sc]sidechaincompress=threshold=0.012:ratio=8:attack=25:release=450[ducked]",
-    \`[ducked][narr_mix]amix=inputs=2:duration=longest:normalize=0,alimiter=limit=0.95,atrim=0:\${totalDuration}[aout]\`
+    `[ducked][narr_mix]amix=inputs=2:duration=longest:normalize=0,alimiter=limit=0.95,atrim=0:${totalDuration}[aout]`
   ].join(";");
 
   await execFileAsync(
@@ -2286,7 +2286,7 @@ app.post(
         .json({
           success: false,
           error:
-            \`Missing required fields: \${missing.join(", ")}\`
+            `Missing required fields: ${missing.join(", ")}`
         });
     }
 
@@ -2315,7 +2315,7 @@ app.post(
       prospectFolder.slice(0, 10);
 
     const prospectStoragePrefix =
-      \`ssp-prospects/\${prospectFolder}/\`;
+      `ssp-prospects/${prospectFolder}/`;
 
     const workDir =
       fs.mkdtempSync(
@@ -2408,7 +2408,7 @@ app.post(
       ensureS3Configured();
 
       console.log(
-        \`[PROSPECT V2] Starting render for \${prospectFolder}\`
+        `[PROSPECT V2] Starting render for ${prospectFolder}`
       );
 
       await Promise.all([
@@ -2628,7 +2628,7 @@ app.post(
         });
 
       const videoKey =
-        \`ssp-prospects/\${prospectFolder}/video-v2.mp4\`;
+        `ssp-prospects/${prospectFolder}/video-v2.mp4`;
 
       const upload =
         await uploadFileToS3({
@@ -2641,7 +2641,7 @@ app.post(
         });
 
       console.log(
-        \`[PROSPECT V2] Uploaded to S3: \${upload.key}\`
+        `[PROSPECT V2] Uploaded to S3: ${upload.key}`
       );
 
       return res.json({
