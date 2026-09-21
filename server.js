@@ -1772,6 +1772,8 @@ async function renderFinalV2({
       exteriorPath,
       "-i",
       ctaPath,
+      "-i",
+      ctaNarrationPath,
       "-stream_loop",
       "-1",
       "-i",
@@ -2655,8 +2657,10 @@ app.post(
             paths.music,
           outputPath:
             paths.output,
-          card1Duration,
-          card2Duration,
+          card1Duration:
+            cardDuration1,
+          card2Duration:
+            cardDuration2,
           ctaDuration,
           fps:
             frameRate
