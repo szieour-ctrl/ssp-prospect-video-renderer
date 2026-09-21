@@ -1348,9 +1348,9 @@ async function renderFinal30s({
     "[v0][v1][v2][v3]concat=n=4:v=1:a=0[visual]",
     `[visual]ass='${escapedAss}'[video]`,
     "[4:a]atrim=0:30,asetpts=PTS-STARTPTS,volume=0.20[music]",
-    "[5:a]apad=pad_dur=30,atrim=0:30,asetpts=PTS-STARTPTS[narr]",
-    "[music][narr]sidechaincompress=threshold=0.012:ratio=8:attack=25:release=450[ducked]",
-    "[ducked][narr]amix=inputs=2:duration=longest:normalize=0,alimiter=limit=0.95,atrim=0:30[aout]"
+    "[5:a]apad=pad_dur=30,atrim=0:30,asetpts=PTS-STARTPTS,asplit=2[narr_sc][narr_mix]",
+    "[music][narr_sc]sidechaincompress=threshold=0.012:ratio=8:attack=25:release=450[ducked]",
+    "[ducked][narr_mix]amix=inputs=2:duration=longest:normalize=0,alimiter=limit=0.95,atrim=0:30[aout]"
   ].join(";");
 
   await execFileAsync(
