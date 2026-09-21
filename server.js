@@ -1237,6 +1237,254 @@ async function renderBrandIntro({
   );
 }
 
+
+function ensureElevenLabsPauseTail(value) {
+  const text =
+    String(value || "").trim();
+
+  if (!text) {
+    return "";
+  }
+
+  if (/\.\.\.\[pauses\]\s*$/i.test(text)) {
+    return text;
+  }
+
+  const cleaned =
+    text
+      .replace(/\s*\[pauses\]\s*$/i, "")
+      .replace(/[.…]+$/g, "")
+      .trim();
+
+  return `${cleaned}...[pauses]`;
+}
+
+async function renderDynamicIntroCard({
+  variant,
+  propertyAddress,
+  card,
+  narrationPath,
+  captionsPath,
+  outputPath,
+  duration,
+  fps = 30
+}) {
+  const safeBrand =
+    escapeDrawtext("SMART STAGE PRO");
+
+  const safeAddress =
+    escapeDrawtext(propertyAddress);
+
+  const safeSub =
+    escapeDrawtext("A QUICK LOOK AT THIS LISTING");
+
+  const filters = [
+    "format=yuv420p",
+    `drawtext=text='${safeBrand}':fontcolor=0xD4B87A:fontsize=38:x=(w-tw)/2:y=90`,
+    `drawtext=text='${safeAddress}':fontcolor=white:fontsize=56:x=(w-tw)/2:y=175`,
+    `drawtext=text='${safeSub}':fontcolor=0xB8975A:fontsize=25:x=(w-tw)/2:y=250`,
+    "drawbox=x=180:y=305:w=1560:h=2:color=0x6b6259@0.7:t=fill"
+  ];
+
+  if (Number(variant) === 1) {
+    const status =
+      [card.occupancy_display, card.listing_type_display]
+        .filter(Boolean)
+        .join("  •  ");
+
+    const specs =
+      [
+        card.year_built_display,
+        card.beds_display,
+        card.baths_display,
+        card.sqft_display
+      ]
+        .filter(Boolean)
+        .join("  •  ");
+
+    const safeStatus =
+      escapeDrawtext(status);
+
+    const safeSpecs =
+      escapeDrawtext(specs);
+
+    const safeHighlight =
+      escapeDrawtext(card.listing_highlight || "");
+
+    filters.push(
+      `drawtext=text='${safeStatus}':fontcolor=white:fontsize=44:x=(w-tw)/2:y=430`,
+      `drawtext=text='${safeSpecs}':fontcolor=white:fontsize=34:x=(w-tw)/2:y=535`,
+      `drawtext=text='${safeHighlight}':fontcolor=0xD4B87A:fontsize=36:x=(w-tw)/2:y=655`
+    );
+  } else {
+    const safeInteriorOriginal =
+      escapeDrawtext(card.interior_original_label || "");
+
+    const safeInteriorFinal =
+      escapeDrawtext(card.interior_final_label || "");
+
+    const safeExteriorOriginal =
+      escapeDrawtext(card.exterior_original_label || "");
+
+    const exteriorFinalLabels =
+      Array.isArray(card.exterior_final_labels)
+        ? card.exterior_final_labels.slice(0, 3)
+        : [card.exterior_final_label].filter(Boolean);
+
+    filters.push(
+      `drawtext=text='INTERIOR':fontcolor=0xD4B87A:fontsize=30:x=155:y=355`,
+      `drawtext=text='ORIGINAL  •  ${safeInteriorOriginal}':fontcolor=white:fontsize=34:x=155:y=420`,
+      `drawtext=text='FINAL     •  ${safeInteriorFinal}':fontcolor=white:fontsize=34:x=155:y=485`,
+      `drawtext=text='EXTERIOR':fontcolor=0xD4B87A:fontsize=30:x=155:y=610`,
+      `drawtext=text='ORIGINAL  •  ${safeExteriorOriginal}':fontcolor=white:fontsize=34:x=155:y=675`
+    );
+
+    exteriorFinalLabels.forEach((label, index) => {
+      const safeLabel =
+        escapeDrawtext(label);
+
+      const prefix =
+        index === 0
+          ? "FINAL     •  "
+          : "             ";
+
+      filters.push(
+        `drawtext=text='${prefix}${safeLabel}':fontcolor=white:fontsize=34:x=155:y=${740 + index * 58}`
+      );
+    });
+  }
+
+  const basePath =
+    outputPath.replace(/\.mp4$/i, "-base.mp4");
+
+  await execFileAsync(
+    "ffmpeg",
+    [
+      "-y",
+      "-f",
+      "lavfi",
+      "-i",
+      `color=c=0x1a1714:s=1920x1080:r=${fps}:d=${duration}`,
+      "-vf",
+      filters.join(","),
+      "-t",
+      String(duration),
+      "-c:v",
+      "libx264",
+      "-preset",
+      "medium",
+      "-crf",
+      "20",
+      "-pix_fmt",
+      "yuv420p",
+      "-movflags",
+      "+faststart",
+      basePath
+    ],
+    {
+      maxBuffer:
+        30 *
+        1024 *
+        1024
+    }
+  );
+
+  const escapedAss =
+    captionsPath
+      .replace(/\\/g, "/")
+      .replace(/:/g, "\\:");
+
+  await execFileAsync(
+    "ffmpeg",
+    [
+      "-y",
+      "-i",
+      basePath,
+      "-i",
+      narrationPath,
+      "-filter_complex",
+      `[0:v]ass='${escapedAss}'[v];[1:a]apad=pad_dur=1,atrim=0:${duration}[a]`,
+      "-map",
+      "[v]",
+      "-map",
+      "[a]",
+      "-t",
+      String(duration),
+      "-c:v",
+      "libx264",
+      "-preset",
+      "medium",
+      "-crf",
+      "20",
+      "-pix_fmt",
+      "yuv420p",
+      "-r",
+      String(fps),
+      "-c:a",
+      "aac",
+      "-b:a",
+      "128k",
+      "-ar",
+      "48000",
+      "-movflags",
+      "+faststart",
+      outputPath
+    ],
+    {
+      maxBuffer:
+        30 *
+        1024 *
+        1024
+    }
+  );
+}
+
+async function concatIntroCards({
+  card1Path,
+  card2Path,
+  outputPath
+}) {
+  await execFileAsync(
+    "ffmpeg",
+    [
+      "-y",
+      "-i",
+      card1Path,
+      "-i",
+      card2Path,
+      "-filter_complex",
+      "[0:v][0:a][1:v][1:a]concat=n=2:v=1:a=1[v][a]",
+      "-map",
+      "[v]",
+      "-map",
+      "[a]",
+      "-c:v",
+      "libx264",
+      "-preset",
+      "medium",
+      "-crf",
+      "20",
+      "-pix_fmt",
+      "yuv420p",
+      "-c:a",
+      "aac",
+      "-b:a",
+      "128k",
+      "-ar",
+      "48000",
+      "-movflags",
+      "+faststart",
+      outputPath
+    ],
+    {
+      maxBuffer:
+        40 *
+        1024 *
+        1024
+    }
+  );
+}
+
 async function renderBeforeAfter9s({
   beforePath,
   afterPath,
@@ -1810,6 +2058,337 @@ app.post(
       } catch (cleanupError) {
         console.error(
           "[PROSPECT 30S] Cleanup failed:",
+          cleanupError.message
+        );
+      }
+    }
+  }
+);
+
+
+// ─────────────────────────────────────────────────────────────
+// TEMP TEST: TWO-CARD DYNAMIC INTRO
+// Development branch only.
+// ─────────────────────────────────────────────────────────────
+
+app.post(
+  "/test-dynamic-intro",
+  async (req, res) => {
+    const {
+      property_address = "",
+      prospect_id = "prospect",
+      agent_first_name = "",
+      agent_name = "",
+      mls_number = "",
+      fps = 30,
+      card_1 = {},
+      card_2 = {},
+      narration_card_1 = "",
+      narration_card_2 = ""
+    } = req.body || {};
+
+    const narration1 =
+      ensureElevenLabsPauseTail(
+        narration_card_1 ||
+        card_1.narration
+      );
+
+    const narration2 =
+      ensureElevenLabsPauseTail(
+        narration_card_2 ||
+        card_2.narration
+      );
+
+    if (
+      !property_address ||
+      !narration1 ||
+      !narration2
+    ) {
+      return res
+        .status(400)
+        .json({
+          success: false,
+          error:
+            "property_address, card 1 narration, and card 2 narration are required"
+        });
+    }
+
+    const frameRate =
+      Number(fps);
+
+    if (
+      !Number.isFinite(frameRate) ||
+      frameRate <= 0
+    ) {
+      return res
+        .status(400)
+        .json({
+          success: false,
+          error:
+            "fps must be greater than 0"
+        });
+    }
+
+    const prospectFolder =
+      makeProspectFolder(
+        property_address
+      );
+
+    const workDir =
+      fs.mkdtempSync(
+        path.join(
+          os.tmpdir(),
+          "ssp-dynamic-intro-"
+        )
+      );
+
+    const paths = {
+      narration1:
+        path.join(
+          workDir,
+          "narration-card-1.mp3"
+        ),
+      narration2:
+        path.join(
+          workDir,
+          "narration-card-2.mp3"
+        ),
+      captions1:
+        path.join(
+          workDir,
+          "captions-card-1.ass"
+        ),
+      captions2:
+        path.join(
+          workDir,
+          "captions-card-2.ass"
+        ),
+      card1:
+        path.join(
+          workDir,
+          "intro-card-1.mp4"
+        ),
+      card2:
+        path.join(
+          workDir,
+          "intro-card-2.mp4"
+        ),
+      final:
+        path.join(
+          workDir,
+          "dynamic-intro-test.mp4"
+        )
+    };
+
+    try {
+      console.log(
+        `[DYNAMIC INTRO TEST] Starting for ${prospectFolder}`
+      );
+
+      const [
+        narrationResult1,
+        narrationResult2
+      ] =
+        await Promise.all([
+          generateElevenLabsNarration({
+            text:
+              narration1,
+            outputPath:
+              paths.narration1
+          }),
+          generateElevenLabsNarration({
+            text:
+              narration2,
+            outputPath:
+              paths.narration2
+          })
+        ]);
+
+      const [
+        narrationDuration1,
+        narrationDuration2
+      ] =
+        await Promise.all([
+          getMediaDuration(
+            paths.narration1
+          ),
+          getMediaDuration(
+            paths.narration2
+          )
+        ]);
+
+      const captionSegments1 =
+        buildCaptionSegments(
+          narrationResult1.alignment
+        );
+
+      const captionSegments2 =
+        buildCaptionSegments(
+          narrationResult2.alignment
+        );
+
+      await Promise.all([
+        writeAssCaptions(
+          paths.captions1,
+          captionSegments1
+        ),
+        writeAssCaptions(
+          paths.captions2,
+          captionSegments2
+        )
+      ]);
+
+      const cardDuration1 =
+        Number(
+          (
+            narrationDuration1 +
+            0.4
+          ).toFixed(3)
+        );
+
+      const cardDuration2 =
+        Number(
+          (
+            narrationDuration2 +
+            0.4
+          ).toFixed(3)
+        );
+
+      await renderDynamicIntroCard({
+        variant: 1,
+        propertyAddress:
+          property_address,
+        card:
+          card_1,
+        narrationPath:
+          paths.narration1,
+        captionsPath:
+          paths.captions1,
+        outputPath:
+          paths.card1,
+        duration:
+          cardDuration1,
+        fps:
+          frameRate
+      });
+
+      await renderDynamicIntroCard({
+        variant: 2,
+        propertyAddress:
+          property_address,
+        card:
+          card_2,
+        narrationPath:
+          paths.narration2,
+        captionsPath:
+          paths.captions2,
+        outputPath:
+          paths.card2,
+        duration:
+          cardDuration2,
+        fps:
+          frameRate
+      });
+
+      await concatIntroCards({
+        card1Path:
+          paths.card1,
+        card2Path:
+          paths.card2,
+        outputPath:
+          paths.final
+      });
+
+      const outputKey =
+        `ssp-prospects/${prospectFolder}/tests/dynamic-intro-v1.mp4`;
+
+      const upload =
+        await uploadFileToS3({
+          filePath:
+            paths.final,
+          key:
+            outputKey,
+          contentType:
+            "video/mp4"
+        });
+
+      const outputDuration =
+        await getMediaDuration(
+          paths.final
+        );
+
+      return res.json({
+        success: true,
+        video_url:
+          upload.url,
+        public_id:
+          upload.key,
+        prospect: {
+          prospect_id,
+          agent_first_name,
+          agent_name,
+          property_address,
+          mls_number,
+          folder_name:
+            prospectFolder
+        },
+        intro: {
+          output_duration:
+            Number(
+              outputDuration.toFixed(3)
+            ),
+          card_1_duration:
+            cardDuration1,
+          card_2_duration:
+            cardDuration2,
+          card_1_narration_duration:
+            Number(
+              narrationDuration1.toFixed(3)
+            ),
+          card_2_narration_duration:
+            Number(
+              narrationDuration2.toFixed(3)
+            ),
+          card_1_caption_count:
+            captionSegments1.length,
+          card_2_caption_count:
+            captionSegments2.length,
+          elevenlabs_model:
+            narrationResult1.modelId,
+          final_word_rule:
+            "last word...[pauses]"
+        }
+      });
+    } catch (error) {
+      console.error(
+        "[DYNAMIC INTRO TEST] Render failed:",
+        error.response?.data ||
+          error.stderr ||
+          error.message ||
+          error
+      );
+
+      return res
+        .status(500)
+        .json({
+          success: false,
+          error:
+            error.response?.data?.detail ||
+            error.message ||
+            "Dynamic intro test render failed"
+        });
+    } finally {
+      try {
+        fs.rmSync(
+          workDir,
+          {
+            recursive: true,
+            force: true
+          }
+        );
+      } catch (cleanupError) {
+        console.error(
+          "[DYNAMIC INTRO TEST] Cleanup failed:",
           cleanupError.message
         );
       }
