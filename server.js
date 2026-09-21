@@ -2454,6 +2454,12 @@ app.post(
           ["video/", "application/octet-stream"]
         ),
         downloadMedia(
+          process.env.CTA_V2_NARRATION_URL,
+          paths.ctaNarration,
+          ["audio/", "application/octet-stream"]
+        ),
+        downloadMedia(
+          process.env.MUSIC_TRACK_V2_URL ||
           process.env.MUSIC_TRACK_URL,
           paths.music,
           ["audio/", "application/octet-stream"]
