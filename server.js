@@ -1613,6 +1613,8 @@ async function renderFinal30s({
       exteriorPath,
       "-i",
       ctaPath,
+      "-i",
+      ctaNarrationPath,
       "-stream_loop",
       "-1",
       "-i",
@@ -1661,7 +1663,8 @@ function ensureV2Configured() {
   const required = [
     "ELEVENLABS_API_KEY",
     "ELEVENLABS_VOICE_ID",
-    "CTA_V2_TEMPLATE_URL"
+    "CTA_V2_TEMPLATE_URL",
+    "CTA_V2_NARRATION_URL"
   ];
 
   if (
@@ -1721,6 +1724,7 @@ async function renderFinalV2({
   interiorPath,
   exteriorPath,
   ctaPath,
+  ctaNarrationPath,
   musicPath,
   outputPath,
   card1Duration,
@@ -1746,9 +1750,9 @@ async function renderFinalV2({
     `[0:a]aresample=48000,aformat=channel_layouts=stereo,apad=pad_dur=1,atrim=0:${card1Duration},asetpts=PTS-STARTPTS[a0]`,
     `[1:a]aresample=48000,aformat=channel_layouts=stereo,apad=pad_dur=1,atrim=0:${card2Duration},asetpts=PTS-STARTPTS[a1]`,
     `anullsrc=r=48000:cl=stereo:d=${transformDuration}[asilence]`,
-    `[4:a]aresample=48000,aformat=channel_layouts=stereo,apad=pad_dur=1,atrim=0:${ctaDuration},asetpts=PTS-STARTPTS[a4]`,
+    `[5:a]aresample=48000,aformat=channel_layouts=stereo,apad=pad_dur=1,atrim=0:${ctaDuration},asetpts=PTS-STARTPTS[a4]`,
     "[a0][a1][asilence][a4]concat=n=4:v=0:a=1[narration]",
-    `[5:a]aresample=48000,aformat=channel_layouts=stereo,atrim=0:${totalDuration},asetpts=PTS-STARTPTS,volume=0.24[music]`,
+    `[6:a]aresample=48000,aformat=channel_layouts=stereo,atrim=0:${totalDuration},asetpts=PTS-STARTPTS,volume=0.24[music]`,
     "[narration]asplit=2[narr_sc][narr_mix]",
     "[music][narr_sc]sidechaincompress=threshold=0.012:ratio=8:attack=25:release=450[ducked]",
     `[ducked][narr_mix]amix=inputs=2:duration=longest:normalize=0,alimiter=limit=0.95,atrim=0:${totalDuration}[aout]`
@@ -2358,6 +2362,11 @@ app.post(
           workDir,
           "cta-v2.mp4"
         ),
+      ctaNarration:
+        path.join(
+          workDir,
+          "cta-v2-narration.mp3"
+        ),
       music:
         path.join(
           workDir,
@@ -2451,18 +2460,29 @@ app.post(
         )
       ]);
 
+      const [
+        ctaDuration,
+        ctaNarrationDuration
+      ] =
+        await Promise.all([
+          getMediaDuration(
+            paths.cta
+          ),
+          getMediaDuration(
+            paths.ctaNarration
+          )
+        ]);
+
       if (
-        !(await mediaHasAudio(paths.cta))
+        Math.abs(
+          ctaNarrationDuration -
+          ctaDuration
+        ) > 1.5
       ) {
         throw new Error(
-          "CTA_V2_TEMPLATE_URL must point to a CTA MP4 that already contains the reusable CTA narration audio."
+          `CTA narration duration (${ctaNarrationDuration.toFixed(2)}s) does not reasonably match CTA template duration (${ctaDuration.toFixed(2)}s).`
         );
       }
-
-      const ctaDuration =
-        await getMediaDuration(
-          paths.cta
-        );
 
       const [
         narrationResult1,
@@ -2623,6 +2643,8 @@ app.post(
             paths.exterior,
           ctaPath:
             paths.cta,
+          ctaNarrationPath:
+            paths.ctaNarration,
           musicPath:
             paths.music,
           outputPath:
