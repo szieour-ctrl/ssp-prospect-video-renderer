@@ -1923,13 +1923,7 @@ async function renderFinalV2({
     transformDuration +
     ctaDuration;
 
-  const ctaStart =
-    card1Duration +
-    card2Duration +
-    transformDuration;
-
   const musicFullLevel = 0.24;
-  const musicDuckedLevel = 0.08;
 
   const filter = [
     `[0:v]scale=1920:1080:force_original_aspect_ratio=increase,crop=1920:1080,fps=${fps},setsar=1,setpts=PTS-STARTPTS[v0]`,
@@ -1942,12 +1936,12 @@ async function renderFinalV2({
     `[0:a]aresample=48000,aformat=channel_layouts=stereo,apad=pad_dur=1,atrim=0:${card1Duration},asetpts=PTS-STARTPTS,loudnorm=I=-16:TP=-1.5:LRA=7,asplit=2[a0mix][a0sc]`,
     `[1:a]aresample=48000,aformat=channel_layouts=stereo,apad=pad_dur=1,atrim=0:${card2Duration},asetpts=PTS-STARTPTS,loudnorm=I=-16:TP=-1.5:LRA=7,asplit=2[a1mix][a1sc]`,
     `anullsrc=r=48000:cl=stereo:d=${transformDuration}[transform_silence]`,
-    `[5:a]aresample=48000,aformat=channel_layouts=stereo,apad=pad_dur=1,atrim=0:${ctaDuration},asetpts=PTS-STARTPTS,loudnorm=I=-16:TP=-1.5:LRA=7[a4]`,
-    "[a0mix][a1mix][transform_silence][a4]concat=n=4:v=0:a=1[narration]",
-    `anullsrc=r=48000:cl=stereo:d=${transformDuration + ctaDuration}[post_intro_silence]`,
-    "[a0sc][a1sc][post_intro_silence]concat=n=3:v=0:a=1[intro_trigger]",
-    `[6:a]aresample=48000,aformat=channel_layouts=stereo,atrim=0:${totalDuration},asetpts=PTS-STARTPTS,volume='if(gte(t,${ctaStart}),${musicDuckedLevel},${musicFullLevel})':eval=frame[music]`,
-    "[music][intro_trigger]sidechaincompress=threshold=0.012:ratio=8:attack=25:release=450[ducked]",
+    `[5:a]aresample=48000,aformat=channel_layouts=stereo,apad=pad_dur=1,atrim=0:${ctaDuration},asetpts=PTS-STARTPTS,loudnorm=I=-16:TP=-1.5:LRA=7,afade=t=in:st=0:d=0.08,asplit=2[a4mix][a4sc]`,
+    "[a0mix][a1mix][transform_silence][a4mix]concat=n=4:v=0:a=1[narration]",
+    `anullsrc=r=48000:cl=stereo:d=${transformDuration}[transform_trigger_silence]`,
+    "[a0sc][a1sc][transform_trigger_silence][a4sc]concat=n=4:v=0:a=1[narration_trigger]",
+    `[6:a]aresample=48000,aformat=channel_layouts=stereo,atrim=0:${totalDuration},asetpts=PTS-STARTPTS,volume=${musicFullLevel}[music]`,
+    "[music][narration_trigger]sidechaincompress=threshold=0.012:ratio=8:attack=120:release=650[ducked]",
     `[ducked][narration]amix=inputs=2:duration=longest:normalize=0,alimiter=limit=0.95,atrim=0:${totalDuration}[aout]`
   ].join(";");
 
