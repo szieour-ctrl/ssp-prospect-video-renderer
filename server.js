@@ -233,6 +233,54 @@ async function uploadFileToS3({
   };
 }
 
+async function registerProspectTracking({
+  prospectId,
+  mlsNumber,
+  agentName,
+  agentEmail,
+  propertyAddress,
+  videoUrl,
+  thumbnailUrl = "",
+  qrCodeUrl = ""
+}) {
+  const trackingBase =
+    String(process.env.SUPABASE_TRACKING_URL || "").replace(/\/$/, "");
+  const registerKey =
+    String(process.env.SUPABASE_TRACKING_REGISTER_KEY || "");
+  const watchBase =
+    String(process.env.PROSPECT_WATCH_BASE_URL || "").replace(/\/$/, "");
+
+  if (!trackingBase || !registerKey || !watchBase) {
+    throw new Error(
+      "Prospect tracking environment is not configured"
+    );
+  }
+
+  const response = await axios.post(
+    `${trackingBase}/functions/v1/register-prospect`,
+    {
+      prospect_id: prospectId,
+      mls_number: mlsNumber || "",
+      agent_name: agentName || "",
+      agent_email: agentEmail || "",
+      property_address: propertyAddress || "",
+      video_url: videoUrl || "",
+      thumbnail_url: thumbnailUrl || "",
+      qr_code_url: qrCodeUrl || "",
+      watch_base_url: watchBase
+    },
+    {
+      headers: {
+        "Content-Type": "application/json",
+        "x-register-key": registerKey
+      },
+      timeout: 15000
+    }
+  );
+
+  return response.data;
+}
+
 // ─────────────────────────────────────────────────────────────
 // PROSPECT VIDEO
 // ─────────────────────────────────────────────────────────────
@@ -2436,6 +2484,8 @@ app.post(
       property_address = "",
       mls_number = "",
       campaign_tag = "",
+      agent_email = "",
+      qr_code_url = "",
       interior_before_image_url = "",
       interior_after_image_url = "",
       exterior_before_image_url = "",
@@ -2890,12 +2940,53 @@ app.post(
         `[PROSPECT V2] Uploaded to S3: ${upload.key}`
       );
 
+      let tracking = null;
+
+      try {
+        tracking =
+          await registerProspectTracking({
+            prospectId:
+              prospect_id,
+            mlsNumber:
+              mls_number,
+            agentName:
+              agent_name ||
+              agent_first_name,
+            agentEmail:
+              agent_email,
+            propertyAddress:
+              property_address,
+            videoUrl:
+              upload.url,
+            qrCodeUrl:
+              qr_code_url
+          });
+
+        console.log(
+          `[PROSPECT V2] Tracking registered: ${tracking.watch_url}`
+        );
+      } catch (
+        trackingError
+      ) {
+        console.error(
+          "[PROSPECT V2] Tracking registration failed:",
+          trackingError.response?.data ||
+            trackingError.message
+        );
+      }
+
       return res.json({
         success: true,
         video_url:
           upload.url,
         public_id:
           upload.key,
+        watch_url:
+          tracking?.watch_url || "",
+        tracking_status:
+          tracking?.success
+            ? "REGISTERED"
+            : "UNAVAILABLE",
         thumbnail_url:
           "",
         thumbnail_public_id:
