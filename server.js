@@ -3629,6 +3629,118 @@ app.post(
 );
 
 // ─────────────────────────────────────────────────────────────
+// TRACKED PROSPECT WATCH PAGE
+// ─────────────────────────────────────────────────────────────
+
+app.get("/watch/:prospectId", (req, res) => {
+  const prospectId = String(req.params.prospectId || "").trim();
+  const watchToken = String(req.query.t || "").trim();
+  const trackingBase = String(process.env.SUPABASE_TRACKING_URL || "").replace(/\/$/, "");
+
+  if (!prospectId || !watchToken || !trackingBase) {
+    return res.status(400).send("Invalid watch link.");
+  }
+
+  const safeProspectId = JSON.stringify(prospectId);
+  const safeWatchToken = JSON.stringify(watchToken);
+  const safeTrackingBase = JSON.stringify(trackingBase);
+
+  res.setHeader("Cache-Control", "no-store");
+  res.type("html").send(`<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Smart Stage PRO Prospect Video</title>
+<style>
+body{margin:0;background:#0b0b0b;color:#fff;font-family:Arial,Helvetica,sans-serif}
+.wrap{max-width:1100px;margin:0 auto;padding:28px 18px 44px}
+.brand{font-weight:700;font-size:22px;margin-bottom:18px}
+.card{background:#151515;border-radius:18px;padding:18px}
+h1{font-size:28px;margin:0 0 14px}
+video{width:100%;border-radius:14px;background:#000}
+.actions{display:flex;gap:12px;flex-wrap:wrap;margin-top:18px}
+a.btn{display:inline-block;padding:12px 16px;border-radius:10px;background:#fff;color:#111;text-decoration:none;font-weight:700}
+.meta{opacity:.72;margin-top:10px;font-size:14px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="brand">Smart Stage PRO</div>
+  <div class="card">
+    <h1 id="address">Personalized Prospect Video</h1>
+    <video id="player" controls playsinline preload="metadata"></video>
+    <div class="actions">
+      <a id="qrLink" class="btn" href="#" target="_blank" rel="noopener">View QR / Compliance Page</a>
+      <a id="plansLink" class="btn" href="https://smartstagepro.com" target="_blank" rel="noopener">Explore Smart Stage PRO</a>
+    </div>
+    <div id="meta" class="meta"></div>
+  </div>
+</div>
+<script>
+const prospectId=${safeProspectId};
+const watchToken=${safeWatchToken};
+const trackingBase=${safeTrackingBase};
+const getUrl=trackingBase+"/functions/v1/get-prospect-watch?prospect_id="+encodeURIComponent(prospectId)+"&watch_token="+encodeURIComponent(watchToken);
+const trackUrl=trackingBase+"/functions/v1/track-prospect-event";
+const sent=new Set();
+const sessionId=(crypto.randomUUID?crypto.randomUUID():String(Date.now())+"-"+Math.random());
+
+async function track(eventType,eventValue){
+  if(sent.has(eventType)) return;
+  sent.add(eventType);
+  try{
+    await fetch(trackUrl,{
+      method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({
+        prospect_id:prospectId,
+        watch_token:watchToken,
+        event_type:eventType,
+        event_value:eventValue,
+        session_id:sessionId
+      })
+    });
+  }catch(e){ sent.delete(eventType); }
+}
+
+(async()=>{
+  const r=await fetch(getUrl,{cache:"no-store"});
+  if(!r.ok) throw new Error("Unable to load prospect video");
+  const j=await r.json();
+  const p=j.prospect;
+  document.getElementById("address").textContent=p.property_address||"Personalized Prospect Video";
+  document.getElementById("player").src=p.video_url||"";
+  document.getElementById("meta").textContent=p.agent_name?("Created for "+p.agent_name):"";
+  const qr=document.getElementById("qrLink");
+  if(p.qr_code_url){
+    qr.href=p.qr_code_url;
+    qr.addEventListener("click",()=>track("QR_CLICKED",1));
+  } else {
+    qr.style.display="none";
+  }
+  document.getElementById("plansLink").addEventListener("click",()=>track("PLANS_CLICKED",1));
+  track("VIDEO_CLICKED",1);
+})().catch(()=>{
+  document.getElementById("address").textContent="This prospect link is unavailable.";
+});
+
+const video=document.getElementById("player");
+video.addEventListener("play",()=>track("VIDEO_STARTED",0));
+video.addEventListener("timeupdate",()=>{
+  if(!video.duration||!isFinite(video.duration)) return;
+  const pct=(video.currentTime/video.duration)*100;
+  if(pct>=25) track("VIDEO_25",25);
+  if(pct>=50) track("VIDEO_50",50);
+  if(pct>=75) track("VIDEO_75",75);
+});
+video.addEventListener("ended",()=>track("VIDEO_COMPLETE",100));
+</script>
+</body>
+</html>`);
+});
+
+// ─────────────────────────────────────────────────────────────
 // START SERVER
 // ─────────────────────────────────────────────────────────────
 
