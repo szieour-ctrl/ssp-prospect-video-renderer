@@ -2111,7 +2111,10 @@ app.post(
 
     if (
       !narration2Upper.includes(
-        "HERE IS WHAT YOU ARE GOING TO SEE."
+        "HERE IS WHAT YOU’RE GOING TO SEE."
+      ) &&
+      !narration2Upper.includes(
+        "HERE IS WHAT YOU'RE GOING TO SEE."
       )
     ) {
       return res
@@ -2119,7 +2122,7 @@ app.post(
         .json({
           success: false,
           error:
-            'narration_card_2 must include the hard narration line "HERE IS WHAT YOU ARE GOING TO SEE." before describing the final images'
+            'narration_card_2 must include the hard narration line "HERE IS WHAT YOU’RE GOING TO SEE." before describing the final images'
         });
     }
 
