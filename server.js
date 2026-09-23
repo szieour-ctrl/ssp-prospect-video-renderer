@@ -7,6 +7,7 @@ const os = require("os");
 const path = require("path");
 const { execFile } = require("child_process");
 const { promisify } = require("util");
+const { installDashboardRoutes } = require("./dashboard-routes");
 
 const {
   S3Client,
@@ -3830,6 +3831,8 @@ video.addEventListener("ended",()=>track("VIDEO_COMPLETE",100));
 </body>
 </html>`);
 });
+
+installDashboardRoutes(app, axios);
 
 // ─────────────────────────────────────────────────────────────
 // START SERVER
