@@ -55,8 +55,13 @@ select,input{background:#11151c;color:#fff;border:1px solid #303846;border-radiu
 input{min-width:260px;flex:1}
 .panel{background:#11151c;border:1px solid #222936;border-radius:14px;overflow:hidden;margin-bottom:20px}
 .panel h2{font-size:16px;margin:0;padding:16px;border-bottom:1px solid #222936}
+.content-grid{display:grid;grid-template-columns:minmax(0,2.2fr) minmax(340px,.8fr);gap:16px;align-items:start}
+.prospect-panel{margin-bottom:0}
+.prospect-panel .tablewrap{overflow:auto;max-height:calc(100vh - 310px);min-height:360px}
+.activity-panel{margin-bottom:0;position:sticky;top:16px;max-height:calc(100vh - 48px)}
+.activity-panel #events{overflow:auto;max-height:calc(100vh - 110px)}
 .tablewrap{overflow:auto}
-table{width:100%;border-collapse:collapse;min-width:980px}
+table{width:100%;border-collapse:collapse;min-width:900px}
 th,td{padding:12px 14px;text-align:left;border-bottom:1px solid #202733;font-size:13px}
 th{color:#9aa4b2;font-size:11px;text-transform:uppercase;letter-spacing:.06em;position:sticky;top:0;background:#11151c}
 tr:hover{background:#161c25}
@@ -65,12 +70,17 @@ tr:hover{background:#161c25}
 .progress{height:8px;background:#242b35;border-radius:999px;overflow:hidden;width:100px}
 .progress i{display:block;height:100%;background:#e7edf5}
 .link{color:#dfe7f3;text-decoration:underline;text-underline-offset:3px}
-.eventgrid{display:grid;grid-template-columns:1.1fr 2fr 1fr 1fr;gap:0}
-.eventgrid>div{padding:11px 14px;border-bottom:1px solid #202733;font-size:13px}
+.eventlist{display:flex;flex-direction:column}
+.eventrow{padding:12px 14px;border-bottom:1px solid #202733}
+.eventtop{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:12px;align-items:center}
+.eventname{font-size:13px;font-weight:700}
+.eventtype{font-size:11px;font-weight:800;letter-spacing:.04em;color:#dfe7f3}
+.eventaddr{font-size:12px;color:#9aa4b2;margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.eventtime{font-size:11px;color:#7f8a99;margin-top:5px}
 .muted{color:#9aa4b2}
 .empty{padding:24px;color:#9aa4b2}
 .error{display:none;background:#35191c;border:1px solid #6f2b32;color:#ffd9dc;padding:12px 14px;border-radius:10px;margin-bottom:16px}
-@media(max-width:1000px){.cards{grid-template-columns:repeat(2,1fr)}.top{align-items:flex-start;flex-direction:column}.shell{padding:16px}.eventgrid{grid-template-columns:1fr 1fr}.eventgrid .addr{display:none}}
+@media(max-width:1100px){.content-grid{grid-template-columns:1fr}.activity-panel{position:static;max-height:none}.activity-panel #events{max-height:480px}.prospect-panel .tablewrap{max-height:620px}.cards{grid-template-columns:repeat(2,1fr)}.top{align-items:flex-start;flex-direction:column}.shell{padding:16px}}
 </style>
 </head>
 <body>
@@ -110,19 +120,21 @@ tr:hover{background:#161c25}
     <input id="search" placeholder="Search agent, property or MLS">
   </div>
 
-  <div class="panel">
-    <h2>Who should I call next?</h2>
-    <div class="tablewrap">
-      <table>
-        <thead><tr><th>Priority</th><th>Agent</th><th>Property</th><th>MLS</th><th>Watched</th><th>Score</th><th>QR</th><th>Plans</th><th>Last activity</th><th>Watch</th></tr></thead>
-        <tbody id="prospects"></tbody>
-      </table>
+  <div class="content-grid">
+    <div class="panel prospect-panel">
+      <h2>Who should I call next?</h2>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Priority</th><th>Agent</th><th>Property</th><th>MLS</th><th>Watched</th><th>Score</th><th>QR</th><th>Plans</th><th>Last activity</th><th>Watch</th></tr></thead>
+          <tbody id="prospects"></tbody>
+        </table>
+      </div>
     </div>
-  </div>
 
-  <div class="panel">
-    <h2>Recent activity</h2>
-    <div id="events"></div>
+    <div class="panel activity-panel">
+      <h2>Recent activity</h2>
+      <div id="events"></div>
+    </div>
   </div>
 </div>
 
@@ -196,13 +208,14 @@ function renderProspects(){
 
 function renderEvents(){
   const el=document.getElementById("events");
-  const items=(model.recent_events||[]).slice(0,30);
+  const items=(model.recent_events||[]).slice(0,40);
   if(!items.length){el.innerHTML='<div class="empty">No prospect activity yet.</div>';return;}
-  el.innerHTML='<div class="eventgrid">'+items.map(e=>
-    '<div><strong>'+esc(e.agent_name||e.prospect_id)+'</strong></div>'+
-    '<div class="addr">'+esc(e.property_address||"")+'</div>'+
-    '<div>'+esc(String(e.event_type||"").replaceAll("_"," "))+'</div>'+
-    '<div class="muted">'+esc(when(e.created_at))+'</div>'
+  el.innerHTML='<div class="eventlist">'+items.map(e=>
+    '<div class="eventrow">'+
+      '<div class="eventtop"><div class="eventname">'+esc(e.agent_name||e.prospect_id)+'</div><div class="eventtype">'+esc(String(e.event_type||"").replaceAll("_"," "))+'</div></div>'+
+      '<div class="eventaddr">'+esc(e.property_address||"")+'</div>'+
+      '<div class="eventtime">'+esc(when(e.created_at))+'</div>'+
+    '</div>'
   ).join("")+'</div>';
 }
 
