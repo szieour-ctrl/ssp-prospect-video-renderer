@@ -31,7 +31,7 @@ function installDashboardRoutes(app, axios) {
 
   app.get("/dashboard", (req, res) => {
     res.setHeader("Cache-Control", "no-store");
-    res.type("html").send(String.raw\`<!doctype html>
+    res.type("html").send(String.raw`<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -232,7 +232,7 @@ load();
 setInterval(load,60000);
 </script>
 </body>
-</html>\`);
+</html>`);
   });
 }
 
