@@ -131,7 +131,7 @@ const params = new URLSearchParams(location.search);
 const key = params.get("key") || "";
 let model = { prospects: [], recent_events: [], summary: {} };
 
-function esc(v){return String(v??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;","\\"":"&quot;","'":"&#39;"}[c]));}
+function esc(v){return String(v??"").replace(/[&<>"]/g,ch=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;"}[ch]));}
 function when(v){
   if(!v) return "—";
   const d=new Date(v);
