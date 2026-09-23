@@ -2106,6 +2106,23 @@ app.post(
         });
     }
 
+    const narration2Upper =
+      String(narration2 || "").toUpperCase();
+
+    if (
+      !narration2Upper.includes(
+        "HERE IS WHAT YOU ARE GOING TO SEE."
+      )
+    ) {
+      return res
+        .status(400)
+        .json({
+          success: false,
+          error:
+            'narration_card_2 must include the hard narration line "HERE IS WHAT YOU ARE GOING TO SEE." before describing the final images'
+        });
+    }
+
     const frameRate =
       Number(fps);
 
@@ -3764,7 +3781,7 @@ a.btn{display:inline-block;padding:12px 16px;border-radius:10px;background:#fff;
     <video id="player" controls playsinline preload="metadata"></video>
     <div class="actions">
       <a id="qrLink" class="btn" href="#" target="_blank" rel="noopener">View QR / Compliance Page</a>
-      <a id="plansLink" class="btn" href="https://smartstagepro.com" target="_blank" rel="noopener">Explore Smart Stage PRO</a>
+      <a id="plansLink" class="btn" href="https://smartstagepro.com/#pricing" target="_blank" rel="noopener">See Plans</a>
     </div>
     <div id="meta" class="meta"></div>
   </div>
