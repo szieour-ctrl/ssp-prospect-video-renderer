@@ -1121,6 +1121,108 @@ function buildCaptionSegments(
   return segments;
 }
 
+function buildTimedCaptionSegmentsFromText(
+  text,
+  duration,
+  {
+    maxWords = 7,
+    maxChars = 46
+  } = {}
+) {
+  const words =
+    String(text || "")
+      .trim()
+      .split(/\s+/)
+      .filter(Boolean);
+
+  if (!words.length) {
+    return [];
+  }
+
+  const buckets = [];
+  let bucket = [];
+
+  function flush() {
+    if (!bucket.length) {
+      return;
+    }
+    buckets.push(
+      bucket.join(" ")
+    );
+    bucket = [];
+  }
+
+  for (const word of words) {
+    const candidate =
+      [...bucket, word].join(" ");
+
+    if (
+      bucket.length &&
+      (
+        bucket.length + 1 > maxWords ||
+        candidate.length > maxChars
+      )
+    ) {
+      flush();
+    }
+
+    bucket.push(word);
+
+    if (
+      /[.!?]$/.test(word) &&
+      bucket.length >= 2
+    ) {
+      flush();
+    }
+  }
+
+  flush();
+
+  const totalWeight =
+    buckets.reduce(
+      (sum, value) =>
+        sum + Math.max(1, value.length),
+      0
+    );
+
+  let cursor = 0;
+
+  return buckets.map(
+    (value, index) => {
+      const remaining =
+        Math.max(
+          0,
+          Number(duration) - cursor
+        );
+
+      const segmentDuration =
+        index === buckets.length - 1
+          ? remaining
+          : Number(duration) *
+            (
+              Math.max(1, value.length) /
+              totalWeight
+            );
+
+      const start =
+        cursor;
+      const end =
+        Math.min(
+          Number(duration),
+          cursor + segmentDuration
+        );
+
+      cursor = end;
+
+      return {
+        text: value,
+        start,
+        end
+      };
+    }
+  );
+}
+
 async function writeAssCaptions(
   filePath,
   segments
@@ -2515,8 +2617,14 @@ app.post(
       card_2 = {},
       narration_card_1 = "",
       narration_card_2 = "",
+      card_2_audio_url = "",
+      card_2_caption_text = "",
       fps = 30
     } = req.body || {};
+
+    const isComplianceReview =
+      String(campaign_tag || "").trim() ===
+      "VIRTUAL_STAGING_REVIEW";
 
     const narration1 =
       ensureElevenLabsPauseTail(
@@ -2525,10 +2633,12 @@ app.post(
       );
 
     const narration2 =
-      ensureElevenLabsPauseTail(
-        narration_card_2 ||
-        card_2.narration
-      );
+      isComplianceReview
+        ? ""
+        : ensureElevenLabsPauseTail(
+            narration_card_2 ||
+            card_2.narration
+          );
 
     const required = {
       prospect_id,
@@ -2538,10 +2648,18 @@ app.post(
       exterior_before_image_url,
       exterior_after_image_url,
       narration_card_1:
-        narration1,
-      narration_card_2:
-        narration2
+        narration1
     };
+
+    if (isComplianceReview) {
+      required.card_2_audio_url =
+        card_2_audio_url;
+      required.card_2_caption_text =
+        card_2_caption_text;
+    } else {
+      required.narration_card_2 =
+        narration2;
+    }
 
     const missing =
       Object.entries(required)
@@ -2647,6 +2765,11 @@ app.post(
           workDir,
           "narration-card-2.wav"
         ),
+      card2SavedAudio:
+        path.join(
+          workDir,
+          "card-2-saved.mp3"
+        ),
       captions1:
         path.join(
           workDir,
@@ -2692,7 +2815,7 @@ app.post(
         `[PROSPECT V2] Starting render for ${prospectFolder}`
       );
 
-      await Promise.all([
+      const mediaDownloads = [
         downloadMedia(
           interior_before_image_url,
           paths.interiorBefore,
@@ -2729,7 +2852,21 @@ app.post(
           paths.music,
           ["audio/", "application/octet-stream"]
         )
-      ]);
+      ];
+
+      if (isComplianceReview) {
+        mediaDownloads.push(
+          downloadMedia(
+            card_2_audio_url,
+            paths.card2SavedAudio,
+            ["audio/", "application/octet-stream"]
+          )
+        );
+      }
+
+      await Promise.all(
+        mediaDownloads
+      );
 
       const [
         ctaDuration,
@@ -2755,62 +2892,117 @@ app.post(
         );
       }
 
-      const combinedNarrationText =
-        `${narration1} ${narration2}`;
+      let narrationDuration1;
+      let narrationDuration2;
+      let captionSegments1;
+      let captionSegments2;
+      let elevenLabsModel = "";
+      let introTtsMode =
+        "single_generation_split";
 
-      const narrationResult =
-        await generateElevenLabsNarration({
-          text:
-            combinedNarrationText,
-          outputPath:
-            paths.narrationCombined
+      if (isComplianceReview) {
+        const narrationResult1 =
+          await generateElevenLabsNarration({
+            text:
+              narration1,
+            outputPath:
+              paths.narration1
+          });
+
+        elevenLabsModel =
+          narrationResult1.modelId;
+        introTtsMode =
+          "card1_elevenlabs_card2_saved_mp3";
+
+        [
+          narrationDuration1,
+          narrationDuration2
+        ] =
+          await Promise.all([
+            getMediaDuration(
+              paths.narration1
+            ),
+            getMediaDuration(
+              paths.card2SavedAudio
+            )
+          ]);
+
+        captionSegments1 =
+          buildCaptionSegments(
+            narrationResult1.alignment
+          );
+
+        captionSegments2 =
+          buildTimedCaptionSegmentsFromText(
+            card_2_caption_text,
+            narrationDuration2
+          );
+
+        await fs.promises.copyFile(
+          paths.card2SavedAudio,
+          paths.narration2
+        );
+      } else {
+        const combinedNarrationText =
+          `${narration1} ${narration2}`;
+
+        const narrationResult =
+          await generateElevenLabsNarration({
+            text:
+              combinedNarrationText,
+            outputPath:
+              paths.narrationCombined
+          });
+
+        elevenLabsModel =
+          narrationResult.modelId;
+
+        const narrationSplitTime =
+          getCombinedNarrationSplitTime(
+            narrationResult.alignment,
+            narration1
+          );
+
+        await splitNarrationAudio({
+          inputPath:
+            paths.narrationCombined,
+          splitTime:
+            narrationSplitTime,
+          output1Path:
+            paths.narration1,
+          output2Path:
+            paths.narration2
         });
 
-      const narrationSplitTime =
-        getCombinedNarrationSplitTime(
-          narrationResult.alignment,
-          narration1
-        );
+        [
+          narrationDuration1,
+          narrationDuration2
+        ] =
+          await Promise.all([
+            getMediaDuration(
+              paths.narration1
+            ),
+            getMediaDuration(
+              paths.narration2
+            )
+          ]);
 
-      await splitNarrationAudio({
-        inputPath:
-          paths.narrationCombined,
-        splitTime:
-          narrationSplitTime,
-        output1Path:
-          paths.narration1,
-        output2Path:
-          paths.narration2
-      });
+        const combinedCaptionSegments =
+          buildCaptionSegments(
+            narrationResult.alignment
+          );
 
-      const [
-        narrationDuration1,
-        narrationDuration2
-      ] =
-        await Promise.all([
-          getMediaDuration(
-            paths.narration1
-          ),
-          getMediaDuration(
-            paths.narration2
-          )
-        ]);
-
-      const combinedCaptionSegments =
-        buildCaptionSegments(
-          narrationResult.alignment
-        );
-
-      const {
-        first:
-          captionSegments1,
-        second:
-          captionSegments2
-      } =
-        splitCaptionSegments(
-          combinedCaptionSegments,
-          narrationSplitTime
-        );
+        ({
+          first:
+            captionSegments1,
+          second:
+            captionSegments2
+        } =
+          splitCaptionSegments(
+            combinedCaptionSegments,
+            narrationSplitTime
+          ));
+      }
 
       await Promise.all([
         writeAssCaptions(
@@ -3061,9 +3253,9 @@ app.post(
           music_ducking:
             true,
           elevenlabs_model:
-            narrationResult.modelId,
+            elevenLabsModel,
           intro_tts_mode:
-            "single_generation_split",
+            introTtsMode,
           final_word_rule:
             "last word...[pauses]"
         }
