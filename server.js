@@ -318,9 +318,23 @@ app.post(
         ""
     } = req.body || {};
 
+    const resolvedBeforeImageUrl =
+      String(
+        interior_before_image_url ||
+        before_image_url ||
+        ""
+      ).trim();
+
+    const resolvedAfterImageUrl =
+      String(
+        interior_after_image_url ||
+        after_image_url ||
+        ""
+      ).trim();
+
     if (
-      !before_image_url ||
-      !after_image_url ||
+      !resolvedBeforeImageUrl ||
+      !resolvedAfterImageUrl ||
       !property_address
     ) {
       return res
@@ -330,7 +344,7 @@ app.post(
             false,
 
           error:
-            "Missing before_image_url, after_image_url, or property_address"
+            "Missing interior_before_image_url, interior_after_image_url, or property_address"
         });
     }
 
@@ -488,12 +502,12 @@ app.post(
       );
 
       await downloadFile(
-        before_image_url,
+        resolvedBeforeImageUrl,
         beforePath
       );
 
       await downloadFile(
-        after_image_url,
+        resolvedAfterImageUrl,
         afterPath
       );
 
@@ -1594,6 +1608,21 @@ function ensureElevenLabsPauseTail(value) {
   return `${cleaned}...[pauses]`;
 }
 
+function normalizeRoadSuffixesForSpeech(value) {
+  return String(value || "")
+    .replace(/\bDr\.?\b/g, "Drive")
+    .replace(/\bRd\.?\b/g, "Road")
+    .replace(/\bSt\.?\b/g, "Street")
+    .replace(/\bAve\.?\b/g, "Avenue")
+    .replace(/\bBlvd\.?\b/g, "Boulevard")
+    .replace(/\bLn\.?\b/g, "Lane")
+    .replace(/\bCt\.?\b/g, "Court")
+    .replace(/\bPl\.?\b/g, "Place")
+    .replace(/\bCir\.?\b/g, "Circle")
+    .replace(/\bPkwy\.?\b/g, "Parkway")
+    .replace(/\bHwy\.?\b/g, "Highway");
+}
+
 async function renderDynamicIntroCard({
   variant,
   propertyAddress,
@@ -2635,8 +2664,10 @@ app.post(
 
     const narration1 =
       ensureElevenLabsPauseTail(
-        narration_card_1 ||
-        card_1.narration
+        normalizeRoadSuffixesForSpeech(
+          narration_card_1 ||
+          card_1.narration
+        )
       );
 
     const narration2 =
@@ -3643,8 +3674,10 @@ app.post(
   "/render-prospect-thumbnail",
   async (req, res) => {
     const {
-      before_image_url,
-      after_image_url,
+      interior_before_image_url = "",
+      interior_after_image_url = "",
+      before_image_url = "",
+      after_image_url = "",
 
       before_label =
         "ORIGINAL LISTING PHOTO",
@@ -3894,7 +3927,10 @@ app.post(
 
           before_label,
 
-          after_label
+          after_label,
+
+          source_pair:
+            "interior_before_after"
         }
       });
     } catch (error) {
