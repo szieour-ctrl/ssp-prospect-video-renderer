@@ -2626,6 +2626,13 @@ app.post(
       String(campaign_tag || "").trim() ===
       "VIRTUAL_STAGING_REVIEW";
 
+    const resolvedCard2AudioUrl =
+      String(
+        card_2_audio_url ||
+        process.env.COMPLIANCE_CARD2_AUDIO_URL ||
+        ""
+      ).trim();
+
     const narration1 =
       ensureElevenLabsPauseTail(
         narration_card_1 ||
@@ -2653,7 +2660,7 @@ app.post(
 
     if (isComplianceReview) {
       required.card_2_audio_url =
-        card_2_audio_url;
+        resolvedCard2AudioUrl;
       required.card_2_caption_text =
         card_2_caption_text;
     } else {
@@ -2857,7 +2864,7 @@ app.post(
       if (isComplianceReview) {
         mediaDownloads.push(
           downloadMedia(
-            card_2_audio_url,
+            resolvedCard2AudioUrl,
             paths.card2SavedAudio,
             ["audio/", "application/octet-stream"]
           )
