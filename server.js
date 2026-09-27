@@ -4087,6 +4087,98 @@ video.addEventListener("ended",()=>track("VIDEO_COMPLETE",100));
 </html>`);
 });
 
+
+// ─────────────────────────────────────────────────────────────
+// TRACKED EMAIL CTA REDIRECT
+// ─────────────────────────────────────────────────────────────
+
+const EMAIL_TRACKING_EVENTS = new Set([
+  "EMAIL_VIDEO_CLICKED",
+  "EMAIL_ZILLOW_SCAN_CLICKED",
+  "EMAIL_COMPLIANCE_DEMO_CLICKED",
+  "EMAIL_PROPERTY_QR_CLICKED",
+  "EMAIL_PRICING_CLICKED",
+  "EMAIL_LISTING_PACKAGE_CLICKED"
+]);
+
+function isAllowedTrackedDestination(targetUrl, requestHostname) {
+  if (targetUrl.protocol !== "https:") return false;
+
+  const host = String(targetUrl.hostname || "").toLowerCase();
+  const requestHost = String(requestHostname || "").toLowerCase();
+
+  return (
+    host === requestHost ||
+    host === "smartstagepro.com" ||
+    host.endsWith(".smartstagepro.com") ||
+    host === "zillow.com" ||
+    host.endsWith(".zillow.com")
+  );
+}
+
+app.get("/track/click", async (req, res) => {
+  const prospectId = String(req.query.prospect_id || "").trim();
+  const eventType = String(req.query.event || "").trim();
+  const destination = String(req.query.to || "").trim();
+  const emailTouch = String(req.query.touch || "").trim();
+  const campaign = String(req.query.campaign || "").trim();
+
+  if (!prospectId || !EMAIL_TRACKING_EVENTS.has(eventType) || !destination) {
+    return res.status(400).send("Invalid tracking link.");
+  }
+
+  let targetUrl;
+  try {
+    targetUrl = new URL(destination);
+  } catch {
+    return res.status(400).send("Invalid destination.");
+  }
+
+  if (!isAllowedTrackedDestination(targetUrl, req.hostname)) {
+    return res.status(400).send("Destination not allowed.");
+  }
+
+  const trackingBase =
+    String(process.env.SUPABASE_TRACKING_URL || "").replace(/\/$/, "");
+  const registerKey =
+    String(process.env.SUPABASE_TRACKING_REGISTER_KEY || "");
+
+  if (trackingBase && registerKey) {
+    try {
+      await axios.post(
+        trackingBase + "/functions/v1/track-prospect-event",
+        {
+          prospect_id: prospectId,
+          event_type: eventType,
+          event_value: 1,
+          session_id: "email-" + Date.now(),
+          metadata: {
+            source: "email",
+            email_touch: emailTouch || null,
+            campaign: campaign || null,
+            destination: targetUrl.toString()
+          }
+        },
+        {
+          headers: {
+            "Content-Type": "application/json",
+            "x-register-key": registerKey
+          },
+          timeout: 5000
+        }
+      );
+    } catch (error) {
+      console.warn(
+        "[EMAIL TRACKING] Event logging failed:",
+        error.response?.data || error.message
+      );
+    }
+  }
+
+  res.setHeader("Cache-Control", "no-store");
+  return res.redirect(302, targetUrl.toString());
+});
+
 installDashboardRoutes(app, axios);
 
 // ─────────────────────────────────────────────────────────────
