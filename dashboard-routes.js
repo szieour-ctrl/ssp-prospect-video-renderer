@@ -99,7 +99,8 @@ tr:hover{background:#161c25}
     <div class="stat"><div id="sC" class="n">—</div><div class="l">Priority C</div></div>
     <div class="stat"><div id="sComplete" class="n">—</div><div class="l">Completed</div></div>
     <div class="stat"><div id="sQr" class="n">—</div><div class="l">QR clicked</div></div>
-    <div class="stat"><div id="sPlans" class="n">—</div><div class="l">Plans clicked</div></div>\n    <div class="stat"><div id="sEmail" class="n">—</div><div class="l">Email engaged</div></div>
+    <div class="stat"><div id="sPlans" class="n">—</div><div class="l">Plans clicked</div></div>
+    <div class="stat"><div id="sEmail" class="n">—</div><div class="l">Email engaged</div></div>
   </div>
 
   <div class="controls">
@@ -113,7 +114,8 @@ tr:hover{background:#161c25}
       <option value="">All engagement</option>
       <option value="complete">Video complete</option>
       <option value="qr">QR clicked</option>
-      <option value="plans">Plans clicked</option>\n      <option value="email">Email CTA clicked</option>
+      <option value="plans">Plans clicked</option>
+      <option value="email">Email CTA clicked</option>
       <option value="50">Watched 50%+</option>
       <option value="0">No video start</option>
     </select>
@@ -159,7 +161,8 @@ function renderSummary(){
   document.getElementById("sC").textContent=s.priority_c??0;
   document.getElementById("sComplete").textContent=s.completed??0;
   document.getElementById("sQr").textContent=s.qr_clicked??0;
-  document.getElementById("sPlans").textContent=s.plans_clicked??0;\n  document.getElementById("sEmail").textContent=s.email_clicked??0;
+  document.getElementById("sPlans").textContent=s.plans_clicked??0;
+  document.getElementById("sEmail").textContent=s.email_clicked??0;
 }
 
 function filtered(){
@@ -170,7 +173,8 @@ function filtered(){
     if(p && x.follow_up_priority!==p) return false;
     if(e==="complete" && !x.video_completed) return false;
     if(e==="qr" && !x.qr_clicked) return false;
-    if(e==="plans" && !x.plans_clicked) return false;\n    if(e==="email" && Number(x.email_click_count||0)<1) return false;
+    if(e==="plans" && !x.plans_clicked) return false;
+    if(e==="email" && Number(x.email_click_count||0)<1) return false;
     if(e==="50" && Number(x.highest_video_percent||0)<50) return false;
     if(e==="0" && x.video_started) return false;
     if(q){
