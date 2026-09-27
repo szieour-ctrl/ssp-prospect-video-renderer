@@ -46,7 +46,7 @@ body{margin:0;background:#090b0f;color:#f4f6f8;font-family:Inter,Arial,Helvetica
 .brand{font-size:14px;letter-spacing:.14em;text-transform:uppercase;color:#9aa4b2}
 h1{margin:5px 0 0;font-size:32px}
 .refresh{border:1px solid #343b46;background:#151922;color:#fff;border-radius:10px;padding:10px 14px;font-weight:700;cursor:pointer}
-.cards{display:grid;grid-template-columns:repeat(7,minmax(120px,1fr));gap:12px;margin-bottom:20px}
+.cards{display:grid;grid-template-columns:repeat(8,minmax(120px,1fr));gap:12px;margin-bottom:20px}
 .stat{background:#11151c;border:1px solid #222936;border-radius:14px;padding:16px}
 .stat .n{font-size:28px;font-weight:800;margin-bottom:4px}
 .stat .l{font-size:12px;color:#9aa4b2;text-transform:uppercase;letter-spacing:.08em}
@@ -99,7 +99,7 @@ tr:hover{background:#161c25}
     <div class="stat"><div id="sC" class="n">—</div><div class="l">Priority C</div></div>
     <div class="stat"><div id="sComplete" class="n">—</div><div class="l">Completed</div></div>
     <div class="stat"><div id="sQr" class="n">—</div><div class="l">QR clicked</div></div>
-    <div class="stat"><div id="sPlans" class="n">—</div><div class="l">Plans clicked</div></div>
+    <div class="stat"><div id="sPlans" class="n">—</div><div class="l">Plans clicked</div></div>\n    <div class="stat"><div id="sEmail" class="n">—</div><div class="l">Email engaged</div></div>
   </div>
 
   <div class="controls">
@@ -113,7 +113,7 @@ tr:hover{background:#161c25}
       <option value="">All engagement</option>
       <option value="complete">Video complete</option>
       <option value="qr">QR clicked</option>
-      <option value="plans">Plans clicked</option>
+      <option value="plans">Plans clicked</option>\n      <option value="email">Email CTA clicked</option>
       <option value="50">Watched 50%+</option>
       <option value="0">No video start</option>
     </select>
@@ -125,7 +125,7 @@ tr:hover{background:#161c25}
       <h2>Who should I call next?</h2>
       <div class="tablewrap">
         <table>
-          <thead><tr><th>Priority</th><th>Agent</th><th>Property</th><th>MLS</th><th>Watched</th><th>Score</th><th>QR</th><th>Plans</th><th>Last activity</th><th>Watch</th></tr></thead>
+          <thead><tr><th>Priority</th><th>Agent</th><th>Property</th><th>MLS</th><th>Watched</th><th>Score</th><th>Email</th><th>QR</th><th>Plans</th><th>Last activity</th><th>Watch</th></tr></thead>
           <tbody id="prospects"></tbody>
         </table>
       </div>
@@ -159,7 +159,7 @@ function renderSummary(){
   document.getElementById("sC").textContent=s.priority_c??0;
   document.getElementById("sComplete").textContent=s.completed??0;
   document.getElementById("sQr").textContent=s.qr_clicked??0;
-  document.getElementById("sPlans").textContent=s.plans_clicked??0;
+  document.getElementById("sPlans").textContent=s.plans_clicked??0;\n  document.getElementById("sEmail").textContent=s.email_clicked??0;
 }
 
 function filtered(){
@@ -170,7 +170,7 @@ function filtered(){
     if(p && x.follow_up_priority!==p) return false;
     if(e==="complete" && !x.video_completed) return false;
     if(e==="qr" && !x.qr_clicked) return false;
-    if(e==="plans" && !x.plans_clicked) return false;
+    if(e==="plans" && !x.plans_clicked) return false;\n    if(e==="email" && Number(x.email_click_count||0)<1) return false;
     if(e==="50" && Number(x.highest_video_percent||0)<50) return false;
     if(e==="0" && x.video_started) return false;
     if(q){
@@ -188,7 +188,7 @@ function filtered(){
 function renderProspects(){
   const rows=filtered();
   const el=document.getElementById("prospects");
-  if(!rows.length){el.innerHTML='<tr><td colspan="10" class="empty">No prospects match these filters.</td></tr>';return;}
+  if(!rows.length){el.innerHTML='<tr><td colspan="11" class="empty">No prospects match these filters.</td></tr>';return;}
   el.innerHTML=rows.map(x=>{
     const pct=Number(x.highest_video_percent||0);
     return '<tr>'+
@@ -198,6 +198,7 @@ function renderProspects(){
       '<td>'+esc(x.mls_number||"—")+'</td>'+
       '<td><div>'+pct+'%</div><div class="progress"><i style="width:'+Math.max(0,Math.min(100,pct))+'%"></i></div></td>'+
       '<td><strong>'+Number(x.engagement_score||0)+'</strong></td>'+
+      '<td>'+(Number(x.email_click_count||0)>0?('<strong>'+Number(x.email_click_count||0)+'</strong>'):"—")+'</td>'+
       '<td>'+(x.qr_clicked?"✓":"—")+'</td>'+
       '<td>'+(x.plans_clicked?"✓":"—")+'</td>'+
       '<td>'+esc(when(x.last_engagement_at))+'</td>'+
