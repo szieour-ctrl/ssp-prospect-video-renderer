@@ -207,6 +207,14 @@ function renderProspects(){
   }).join("");
 }
 
+function eventContext(e){
+  const m=e&&e.metadata&&typeof e.metadata==="object"?e.metadata:{};
+  const parts=[];
+  if(m.email_touch) parts.push("Email "+m.email_touch);
+  if(m.campaign) parts.push(String(m.campaign));
+  return parts.join(" • ");
+}
+
 function renderEvents(){
   const el=document.getElementById("events");
   const items=(model.recent_events||[]).slice(0,40);
@@ -214,7 +222,7 @@ function renderEvents(){
   el.innerHTML='<div class="eventlist">'+items.map(e=>
     '<div class="eventrow">'+
       '<div class="eventtop"><div class="eventname">'+esc(e.agent_name||e.prospect_id)+'</div><div class="eventtype">'+esc(String(e.event_type||"").replaceAll("_"," "))+'</div></div>'+
-      '<div class="eventaddr">'+esc(e.property_address||"")+'</div>'+
+      '<div class="eventaddr">'+esc(e.property_address||"")+(eventContext(e)?' • '+esc(eventContext(e)):'')+'</div>'+
       '<div class="eventtime">'+esc(when(e.created_at))+'</div>'+
     '</div>'
   ).join("")+'</div>';
