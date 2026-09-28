@@ -29,6 +29,45 @@ function installDashboardRoutes(app, axios) {
     }
   });
 
+  app.post("/api/prospect-contacted", async (req, res) => {
+    const dashboardKey = String(req.query.key || "").trim();
+    const trackingBase = String(process.env.SUPABASE_TRACKING_URL || "").replace(/\/$/, "");
+
+    if (!dashboardKey || !trackingBase) {
+      return res.status(401).json({ success: false, error: "Unauthorized" });
+    }
+
+    const prospectId = String(req.body?.prospect_id || "").trim();
+    const contacted = Boolean(req.body?.contacted);
+
+    if (!prospectId) {
+      return res.status(400).json({ success: false, error: "prospect_id is required" });
+    }
+
+    try {
+      const response = await axios.post(
+        trackingBase + "/functions/v1/set-prospect-contacted",
+        { prospect_id: prospectId, contacted },
+        {
+          headers: {
+            "Content-Type": "application/json",
+            "x-dashboard-key": dashboardKey
+          },
+          timeout: 15000
+        }
+      );
+
+      res.setHeader("Cache-Control", "no-store");
+      return res.json(response.data);
+    } catch (error) {
+      const status = error.response?.status || 500;
+      return res.status(status).json({
+        success: false,
+        error: status === 401 ? "Unauthorized" : "Unable to update contacted status"
+      });
+    }
+  });
+
   app.get("/dashboard", (req, res) => {
     res.setHeader("Cache-Control", "no-store");
     res.type("html").send(String.raw`<!doctype html>
@@ -70,6 +109,10 @@ tr:hover{background:#161c25}
 .progress{height:8px;background:#242b35;border-radius:999px;overflow:hidden;width:100px}
 .progress i{display:block;height:100%;background:#e7edf5}
 .link{color:#dfe7f3;text-decoration:underline;text-underline-offset:3px}
+.agentphone{display:block;margin-top:4px}
+.contactbox{width:18px;height:18px;min-width:18px;accent-color:auto;cursor:pointer}
+.contactwrap{display:flex;align-items:center;gap:8px}
+.contacttime{font-size:11px;color:#7f8a99;margin-top:4px}
 .eventlist{display:flex;flex-direction:column}
 .eventrow{padding:12px 14px;border-bottom:1px solid #202733}
 .eventtop{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:12px;align-items:center}
@@ -118,6 +161,8 @@ tr:hover{background:#161c25}
       <option value="email">Email CTA clicked</option>
       <option value="50">Watched 50%+</option>
       <option value="0">No video start</option>
+      <option value="contacted">Contacted</option>
+      <option value="not_contacted">Not contacted</option>
     </select>
     <input id="search" placeholder="Search agent, property or MLS">
   </div>
@@ -127,7 +172,7 @@ tr:hover{background:#161c25}
       <h2>Who should I call next?</h2>
       <div class="tablewrap">
         <table>
-          <thead><tr><th>Priority</th><th>Agent</th><th>Phone</th><th>Property</th><th>MLS</th><th>Watched</th><th>Score</th><th>Email</th><th>QR</th><th>Plans</th><th>Last activity</th><th>Watch</th></tr></thead>
+          <thead><tr><th>Priority</th><th>Agent</th><th>Contacted</th><th>Property</th><th>MLS</th><th>Watched</th><th>Score</th><th>Email</th><th>QR</th><th>Plans</th><th>Last activity</th><th>Watch</th></tr></thead>
           <tbody id="prospects"></tbody>
         </table>
       </div>
@@ -183,8 +228,10 @@ function filtered(){
     if(e==="email" && Number(x.email_click_count||0)<1) return false;
     if(e==="50" && Number(x.highest_video_percent||0)<50) return false;
     if(e==="0" && x.video_started) return false;
+    if(e==="contacted" && !x.contacted) return false;
+    if(e==="not_contacted" && x.contacted) return false;
     if(q){
-      const hay=[x.agent_name,x.property_address,x.mls_number].join(" ").toLowerCase();
+      const hay=[x.agent_name,x.agent_email,x.agent_phone_primary,x.agent_phone_secondary,x.property_address,x.mls_number].join(" ").toLowerCase();
       if(!hay.includes(q)) return false;
     }
     return true;
@@ -195,6 +242,32 @@ function filtered(){
   });
 }
 
+async function setContacted(prospectId, contacted, checkbox){
+  checkbox.disabled=true;
+  try{
+    const r=await fetch("/api/prospect-contacted?key="+encodeURIComponent(key),{
+      method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({prospect_id:prospectId,contacted})
+    });
+    const j=await r.json();
+    if(!r.ok||!j.success) throw new Error(j.error||"Unable to update contacted status");
+    const row=(model.prospects||[]).find(x=>x.prospect_id===prospectId);
+    if(row){
+      row.contacted=Boolean(j.prospect?.contacted);
+      row.contacted_at=j.prospect?.contacted_at||null;
+    }
+    renderProspects();
+  }catch(e){
+    checkbox.checked=!contacted;
+    const error=document.getElementById("error");
+    error.textContent=e.message||"Unable to update contacted status";
+    error.style.display="block";
+  }finally{
+    checkbox.disabled=false;
+  }
+}
+
 function renderProspects(){
   const rows=filtered();
   const el=document.getElementById("prospects");
@@ -203,9 +276,11 @@ function renderProspects(){
     const pct=Number(x.highest_video_percent||0);
     return '<tr>'+
       '<td><span class="badge '+esc(String(x.follow_up_priority||"C").toLowerCase())+'">'+esc(x.follow_up_priority||"C")+'</span></td>'+
-      '<td><strong>'+esc(x.agent_name||"—")+'</strong><br><span class="muted">'+esc(x.agent_email||"")+'</span></td>'+
-      '<td>'+(x.agent_phone_primary?'<a class="link" href="'+esc(phoneHref(x.agent_phone_primary))+'">'+esc(x.agent_phone_primary)+'</a>':"—")+
-        (x.agent_phone_secondary?'<br><span class="muted">Alt: <a class="link" href="'+esc(phoneHref(x.agent_phone_secondary))+'">'+esc(x.agent_phone_secondary)+'</a></span>':"")+'</td>'+
+      '<td><strong>'+esc(x.agent_name||"—")+'</strong><br><span class="muted">'+esc(x.agent_email||"")+'</span>'+
+        (x.agent_phone_primary?'<a class="link agentphone" href="'+esc(phoneHref(x.agent_phone_primary))+'">'+esc(x.agent_phone_primary)+'</a>':"")+
+        (x.agent_phone_secondary&&x.agent_phone_secondary!==x.agent_phone_primary?'<span class="muted agentphone">Alt: <a class="link" href="'+esc(phoneHref(x.agent_phone_secondary))+'">'+esc(x.agent_phone_secondary)+'</a></span>':"")+'</td>'+
+      '<td><div class="contactwrap"><input class="contactbox" type="checkbox" data-prospect="'+esc(x.prospect_id)+'" '+(x.contacted?"checked":"")+' aria-label="Mark contacted"></div>'+
+        (x.contacted_at?'<div class="contacttime">'+esc(when(x.contacted_at))+'</div>':"")+'</td>'+
       '<td>'+esc(x.property_address||"—")+'</td>'+
       '<td>'+esc(x.mls_number||"—")+'</td>'+
       '<td><div>'+pct+'%</div><div class="progress"><i style="width:'+Math.max(0,Math.min(100,pct))+'%"></i></div></td>'+
@@ -217,6 +292,11 @@ function renderProspects(){
       '<td>'+(x.watch_url?'<a class="link" target="_blank" rel="noopener" href="'+esc(x.watch_url)+'">Open</a>':"—")+'</td>'+
       '</tr>';
   }).join("");
+  el.querySelectorAll(".contactbox").forEach(cb=>{
+    cb.addEventListener("change",()=>{
+      setContacted(cb.dataset.prospect,cb.checked,cb);
+    });
+  });
 }
 
 function eventContext(e){
