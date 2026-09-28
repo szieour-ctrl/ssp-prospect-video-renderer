@@ -127,7 +127,7 @@ tr:hover{background:#161c25}
       <h2>Who should I call next?</h2>
       <div class="tablewrap">
         <table>
-          <thead><tr><th>Priority</th><th>Agent</th><th>Property</th><th>MLS</th><th>Watched</th><th>Score</th><th>Email</th><th>QR</th><th>Plans</th><th>Last activity</th><th>Watch</th></tr></thead>
+          <thead><tr><th>Priority</th><th>Agent</th><th>Phone</th><th>Property</th><th>MLS</th><th>Watched</th><th>Score</th><th>Email</th><th>QR</th><th>Plans</th><th>Last activity</th><th>Watch</th></tr></thead>
           <tbody id="prospects"></tbody>
         </table>
       </div>
@@ -152,6 +152,12 @@ function when(v){
   return new Intl.DateTimeFormat("en-US",{month:"short",day:"numeric",hour:"numeric",minute:"2-digit"}).format(d);
 }
 function priorityRank(v){return v==="A"?0:v==="B"?1:2;}
+function phoneHref(v){
+  const raw=String(v||"").trim();
+  if(!raw) return "";
+  const clean=raw.replace(/[^0-9+]/g,"");
+  return clean?"tel:"+clean:"";
+}
 
 function renderSummary(){
   const s=model.summary||{};
@@ -192,12 +198,14 @@ function filtered(){
 function renderProspects(){
   const rows=filtered();
   const el=document.getElementById("prospects");
-  if(!rows.length){el.innerHTML='<tr><td colspan="11" class="empty">No prospects match these filters.</td></tr>';return;}
+  if(!rows.length){el.innerHTML='<tr><td colspan="12" class="empty">No prospects match these filters.</td></tr>';return;}
   el.innerHTML=rows.map(x=>{
     const pct=Number(x.highest_video_percent||0);
     return '<tr>'+
       '<td><span class="badge '+esc(String(x.follow_up_priority||"C").toLowerCase())+'">'+esc(x.follow_up_priority||"C")+'</span></td>'+
       '<td><strong>'+esc(x.agent_name||"—")+'</strong><br><span class="muted">'+esc(x.agent_email||"")+'</span></td>'+
+      '<td>'+(x.agent_phone_primary?'<a class="link" href="'+esc(phoneHref(x.agent_phone_primary))+'">'+esc(x.agent_phone_primary)+'</a>':"—")+
+        (x.agent_phone_secondary?'<br><span class="muted">Alt: <a class="link" href="'+esc(phoneHref(x.agent_phone_secondary))+'">'+esc(x.agent_phone_secondary)+'</a></span>':"")+'</td>'+
       '<td>'+esc(x.property_address||"—")+'</td>'+
       '<td>'+esc(x.mls_number||"—")+'</td>'+
       '<td><div>'+pct+'%</div><div class="progress"><i style="width:'+Math.max(0,Math.min(100,pct))+'%"></i></div></td>'+
