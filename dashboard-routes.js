@@ -277,8 +277,8 @@ function renderProspects(){
     return '<tr>'+
       '<td><span class="badge '+esc(String(x.follow_up_priority||"C").toLowerCase())+'">'+esc(x.follow_up_priority||"C")+'</span></td>'+
       '<td><strong>'+esc(x.agent_name||"—")+'</strong><br><span class="muted">'+esc(x.agent_email||"")+'</span>'+
-        (x.agent_phone_primary?'<a class="link agentphone" href="'+esc(phoneHref(x.agent_phone_primary))+'">'+esc(x.agent_phone_primary)+'</a>':"")+
-        (x.agent_phone_secondary&&x.agent_phone_secondary!==x.agent_phone_primary?'<span class="muted agentphone">Alt: <a class="link" href="'+esc(phoneHref(x.agent_phone_secondary))+'">'+esc(x.agent_phone_secondary)+'</a></span>':"")+'</td>'+
+        (x.agent_phone_primary?'<span class="agentphone">Primary: <a class="link" href="'+esc(phoneHref(x.agent_phone_primary))+'">'+esc(x.agent_phone_primary)+'</a></span>':"")+
+        (x.agent_phone_secondary?'<span class="muted agentphone">Secondary: <a class="link" href="'+esc(phoneHref(x.agent_phone_secondary))+'">'+esc(x.agent_phone_secondary)+'</a></span>':"")+'</td>'+
       '<td><div class="contactwrap"><input class="contactbox" type="checkbox" data-prospect="'+esc(x.prospect_id)+'" '+(x.contacted?"checked":"")+' aria-label="Mark contacted"></div>'+
         (x.contacted_at?'<div class="contacttime">'+esc(when(x.contacted_at))+'</div>':"")+'</td>'+
       '<td>'+esc(x.property_address||"—")+'</td>'+
