@@ -239,6 +239,8 @@ async function registerProspectTracking({
   mlsNumber,
   agentName,
   agentEmail,
+  agentPhonePrimary = "",
+  agentPhoneSecondary = "",
   propertyAddress,
   videoUrl,
   thumbnailUrl = "",
@@ -264,6 +266,8 @@ async function registerProspectTracking({
       mls_number: mlsNumber || "",
       agent_name: agentName || "",
       agent_email: agentEmail || "",
+      agent_phone_primary: agentPhonePrimary || "",
+      agent_phone_secondary: agentPhoneSecondary || "",
       property_address: propertyAddress || "",
       video_url: videoUrl || "",
       thumbnail_url: thumbnailUrl || "",
@@ -2637,6 +2641,8 @@ app.post(
       mls_number = "",
       campaign_tag = "",
       agent_email = "",
+      agent_phone_primary = "",
+      agent_phone_secondary = "",
       qr_code_url = "",
       interior_before_image_url = "",
       interior_after_image_url = "",
@@ -3205,6 +3211,10 @@ app.post(
               agent_first_name,
             agentEmail:
               agent_email,
+            agentPhonePrimary:
+              agent_phone_primary,
+            agentPhoneSecondary:
+              agent_phone_secondary,
             propertyAddress:
               property_address,
             videoUrl:
@@ -3249,6 +3259,8 @@ app.post(
           property_address,
           mls_number,
           campaign_tag,
+          agent_phone_primary,
+          agent_phone_secondary,
           run_date:
             prospectRunDate,
           folder_name:
