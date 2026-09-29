@@ -1660,9 +1660,16 @@ async function renderDynamicIntroCard({
         .filter(Boolean)
         .join("  •  ");
 
+    const yearBuiltDisplay =
+      String(card.year_built_display || "").trim()
+        ? (/^built\s+in\s*:/i.test(String(card.year_built_display || "").trim())
+            ? String(card.year_built_display || "").trim()
+            : `Built in: ${String(card.year_built_display || "").trim()}`)
+        : "";
+
     const specs =
       [
-        card.year_built_display,
+        yearBuiltDisplay,
         card.beds_display,
         card.baths_display,
         card.sqft_display
