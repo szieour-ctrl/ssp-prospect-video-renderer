@@ -3717,9 +3717,23 @@ app.post(
         ""
     } = req.body || {};
 
+    const resolvedBeforeImageUrl =
+      String(
+        interior_before_image_url ||
+        before_image_url ||
+        ""
+      ).trim();
+
+    const resolvedAfterImageUrl =
+      String(
+        interior_after_image_url ||
+        after_image_url ||
+        ""
+      ).trim();
+
     if (
-      !before_image_url ||
-      !after_image_url ||
+      !resolvedBeforeImageUrl ||
+      !resolvedAfterImageUrl ||
       !property_address
     ) {
       return res
@@ -3729,7 +3743,7 @@ app.post(
             false,
 
           error:
-            "Missing before_image_url, after_image_url, or property_address"
+            "Missing interior_before_image_url, interior_after_image_url, or property_address"
         });
     }
 
@@ -3786,12 +3800,12 @@ app.post(
       );
 
       await downloadFile(
-        before_image_url,
+        resolvedBeforeImageUrl,
         beforePath
       );
 
       await downloadFile(
-        after_image_url,
+        resolvedAfterImageUrl,
         afterPath
       );
 
