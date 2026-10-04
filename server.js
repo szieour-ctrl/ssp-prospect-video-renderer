@@ -4017,15 +4017,18 @@ app.get("/watch/:prospectId", (req, res) => {
   const watchToken = String(req.query.t || "").trim();
   const trackingBase = String(process.env.SUPABASE_TRACKING_URL || "").replace(/\/$/, "");
 
-  if (!prospectId || !watchToken || !trackingBase) {
+  if (!prospectId || !trackingBase) {
     return res.status(400).send("Invalid watch link.");
   }
 
-  const safeProspectId = JSON.stringify(prospectId);
-  const safeWatchToken = JSON.stringify(watchToken);
-  const safeTrackingBase = JSON.stringify(trackingBase);
+  const inlineJson = value => JSON.stringify(value).replace(/</g, "\\u003c");
+  const safeProspectId = inlineJson(prospectId);
+  const safeWatchToken = inlineJson(watchToken);
+  const safeTrackingBase = inlineJson(trackingBase);
+  const safeMetaPixelId = inlineJson(/^[0-9]+$/.test(process.env.META_PIXEL_ID || "") ? process.env.META_PIXEL_ID : "2034726263826697");
 
   res.setHeader("Cache-Control", "no-store");
+  res.setHeader("Referrer-Policy", "no-referrer");
   res.type("html").send(`<!doctype html>
 <html lang="en">
 <head>
@@ -4042,6 +4045,9 @@ video{width:100%;border-radius:14px;background:#000}
 .actions{display:flex;gap:12px;flex-wrap:wrap;margin-top:18px}
 a.btn{display:inline-block;padding:12px 16px;border-radius:10px;background:#fff;color:#111;text-decoration:none;font-weight:700}
 .meta{opacity:.72;margin-top:10px;font-size:14px}
+.ad-choice{margin-top:18px;font-size:13px;color:#ccc}
+.ad-choice button{margin:8px 8px 0 0;padding:9px 12px;border:1px solid #888;border-radius:8px;background:#222;color:#fff;cursor:pointer}
+.ad-choice button:focus-visible{outline:2px solid #fff;outline-offset:3px}
 </style>
 </head>
 <body>
@@ -4055,18 +4061,117 @@ a.btn{display:inline-block;padding:12px 16px;border-radius:10px;background:#fff;
       <a id="plansLink" class="btn" href="https://smartstagepro.com/#pricing" target="_blank" rel="noopener">See Plans</a>
     </div>
     <div id="meta" class="meta"></div>
+    <div class="ad-choice">
+      <p id="adStatus" aria-live="polite">Allow advertising cookies to help us show relevant Smart Stage PRO ads on Facebook and Instagram?</p>
+      <button id="allowAds" type="button">Allow advertising</button>
+      <button id="declineAds" type="button">No thanks</button>
+    </div>
   </div>
 </div>
 <script>
 const prospectId=${safeProspectId};
-const watchToken=${safeWatchToken};
+let watchToken=${safeWatchToken};
+const tokenKey="ssp-watch-token:"+prospectId;
+try{
+  if(watchToken) sessionStorage.setItem(tokenKey,watchToken);
+  else watchToken=sessionStorage.getItem(tokenKey)||"";
+}catch(e){}
+let metaUrlSafe=false;
+try{
+  history.replaceState(history.state,"",location.pathname);
+  metaUrlSafe=!location.search&&!location.hash;
+}catch(e){}
+// Meta also collects the referrer; do not load it when that URL contains a private token.
+if(document.referrer){
+  try{
+    const ref=new URL(document.referrer);
+    if(ref.searchParams.has("t")||ref.searchParams.has("watch_token")) metaUrlSafe=false;
+  }catch(e){ metaUrlSafe=false; }
+}
 const trackingBase=${safeTrackingBase};
 const getUrl=trackingBase+"/functions/v1/get-prospect-watch?prospect_id="+encodeURIComponent(prospectId)+"&watch_token="+encodeURIComponent(watchToken);
 const trackUrl=trackingBase+"/functions/v1/track-prospect-event";
+const metaPixelId=${safeMetaPixelId};
+const consentKey="ssp-watch-advertising-v1";
+const metaSent=new Set();
+let adsAllowed=false;
+let metaReady=false;
+let watchLoaded=false;
+function hasPrivacyOptOut(){
+  return navigator.globalPrivacyControl===true||navigator.doNotTrack==="1"||window.doNotTrack==="1";
+}
+function updateAdStatus(){
+  document.getElementById("adStatus").textContent=hasPrivacyOptOut()
+    ?"Advertising tracking is off because of your browser privacy preference."
+    :adsAllowed?"Advertising tracking is on. You can turn it off here at any time."
+    :"Advertising tracking is off. You can allow it here at any time.";
+  document.getElementById("allowAds").disabled=hasPrivacyOptOut();
+}
+function startMeta(){
+  if(!adsAllowed||!metaUrlSafe||hasPrivacyOptOut()||!watchLoaded) return;
+  try{
+    if(!window.fbq){
+      const n=window.fbq=function(){
+        n.callMethod?n.callMethod.apply(n,arguments):n.queue.push(arguments);
+      };
+      if(!window._fbq) window._fbq=n;
+      n.push=n;n.loaded=true;n.version="2.0";n.queue=[];
+      const script=document.createElement("script");
+      script.async=true;
+      script.src="https://connect.facebook.net/en_US/fbevents.js";
+      script.referrerPolicy="no-referrer";
+      document.head.appendChild(script);
+    }
+    if(!metaReady){
+      fbq("set","autoConfig",false,metaPixelId);
+      fbq("consent","grant");
+      fbq("init",metaPixelId);
+      metaReady=true;
+    }else{
+      fbq("consent","grant");
+    }
+    sendMeta("PageView",{},true);
+    sendMeta("SSPWatchPageView",{content_name:"SSP Prospect Video"});
+  }catch(e){}
+}
+function sendMeta(name,params,standard){
+  if(!adsAllowed||!metaReady||!metaUrlSafe||hasPrivacyOptOut()||metaSent.has(name)) return;
+  try{
+    fbq(standard?"trackSingle":"trackSingleCustom",metaPixelId,name,params||{});
+    metaSent.add(name);
+  }catch(e){}
+}
+function metaActivity(eventType,eventValue){
+  const names={
+    VIDEO_STARTED:"SSPVideoStarted",VIDEO_25:"SSPVideo25",
+    VIDEO_50:"SSPVideo50",VIDEO_75:"SSPVideo75",
+    VIDEO_COMPLETE:"SSPVideoComplete",QR_CLICKED:"SSPQRClicked",
+    PLANS_CLICKED:"SSPPlansClicked"
+  };
+  if(names[eventType]) sendMeta(names[eventType],{content_name:"SSP Prospect Video",event_value:eventValue});
+  if(eventType==="VIDEO_STARTED"||eventType==="QR_CLICKED"||eventType==="PLANS_CLICKED"){
+    sendMeta("SSPVideoEngagement",{content_name:"SSP Prospect Video"});
+  }
+}
+try{ adsAllowed=localStorage.getItem(consentKey)==="allowed"&&!hasPrivacyOptOut(); }catch(e){}
+document.getElementById("allowAds").addEventListener("click",()=>{
+  if(hasPrivacyOptOut()) return;
+  adsAllowed=true;
+  try{localStorage.setItem(consentKey,"allowed");}catch(e){}
+  updateAdStatus();startMeta();
+});
+document.getElementById("declineAds").addEventListener("click",()=>{
+  adsAllowed=false;
+  try{localStorage.setItem(consentKey,"denied");}catch(e){}
+  try{if(window.fbq) fbq("consent","revoke");}catch(e){}
+  updateAdStatus();
+});
+updateAdStatus();
 const sent=new Set();
 const sessionId=(crypto.randomUUID?crypto.randomUUID():String(Date.now())+"-"+Math.random());
 
 async function track(eventType,eventValue){
+  metaActivity(eventType,eventValue);
   if(sent.has(eventType)) return;
   sent.add(eventType);
   try{
@@ -4085,10 +4190,13 @@ async function track(eventType,eventValue){
 }
 
 (async()=>{
+  if(!watchToken) throw new Error("Missing watch token");
   const r=await fetch(getUrl,{cache:"no-store"});
   if(!r.ok) throw new Error("Unable to load prospect video");
   const j=await r.json();
   const p=j.prospect;
+  watchLoaded=true;
+  startMeta();
   document.getElementById("address").textContent=p.property_address||"Personalized Prospect Video";
   document.getElementById("player").src=p.video_url||"";
   document.getElementById("meta").textContent=p.agent_name?("Created for "+p.agent_name):"";
