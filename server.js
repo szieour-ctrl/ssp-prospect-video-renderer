@@ -173,6 +173,20 @@ function makeProspectFolder(
   return `${getPacificRunDate(date)}-${safeStreetAddress}`;
 }
 
+function extractStagingProspectPrefix(...urls) {
+  for (const value of urls) {
+    const raw = String(value || "").trim();
+    if (!raw) continue;
+    try {
+      const u = new URL(raw);
+      const decodedPath = decodeURIComponent(u.pathname || "").replace(/^\/+/, "");
+      const match = decodedPath.match(/^(staging-prospects\/[^/]+)\//i);
+      if (match) return match[1] + "/";
+    } catch (_) {}
+  }
+  return "";
+}
+
 function ensureS3Configured() {
   if (!AWS_S3_BUCKET) {
     throw new Error(
@@ -3200,6 +3214,35 @@ app.post(
             "video/mp4"
         });
 
+      const stagingPrefix =
+        extractStagingProspectPrefix(
+          interior_before_image_url,
+          interior_after_image_url,
+          exterior_before_image_url,
+          exterior_after_image_url,
+          qr_code_url
+        );
+
+      if (stagingPrefix) {
+        const stagingVideoKey =
+          stagingPrefix + "video-v2.mp4";
+        await uploadFileToS3({
+          filePath:
+            paths.output,
+          key:
+            stagingVideoKey,
+          contentType:
+            "video/mp4"
+        });
+        console.log(
+          `[PROSPECT V2] Mirrored raw video to S3: ${stagingVideoKey}`
+        );
+      } else {
+        console.warn(
+          "[PROSPECT V2] Could not resolve staging-prospects folder; legacy S3 upload preserved"
+        );
+      }
+
       console.log(
         `[PROSPECT V2] Uploaded to S3: ${upload.key}`
       );
@@ -3923,6 +3966,32 @@ app.post(
           contentType:
             "image/jpeg"
         });
+
+      const stagingPrefix =
+        extractStagingProspectPrefix(
+          resolvedBeforeImageUrl,
+          resolvedAfterImageUrl
+        );
+
+      if (stagingPrefix) {
+        const stagingThumbnailKey =
+          stagingPrefix + "thumbnail.jpg";
+        await uploadFileToS3({
+          filePath:
+            outputPath,
+          key:
+            stagingThumbnailKey,
+          contentType:
+            "image/jpeg"
+        });
+        console.log(
+          `[PROSPECT THUMBNAIL] Mirrored thumbnail to S3: ${stagingThumbnailKey}`
+        );
+      } else {
+        console.warn(
+          "[PROSPECT THUMBNAIL] Could not resolve staging-prospects folder; legacy S3 upload preserved"
+        );
+      }
 
       console.log(
         `[PROSPECT THUMBNAIL] Uploaded to S3: ${upload.key}`
