@@ -5,11 +5,10 @@
   "main": "server-rnd.js",
   "scripts": {
     "start": "node server-rnd.js",
-    "start:production": "node server.js"
+    "start:production": "node server.js",
+    "test": "node --test test/*.test.js"
   },
-  "engines": {
-    "node": ">=20"
-  },
+  "engines": { "node": ">=20" },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.0.0",
     "axios": "^1.11.0",

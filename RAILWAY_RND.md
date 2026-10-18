@@ -28,6 +28,17 @@ Expected response includes:
 
 ## R&D routes
 
+### Spiral-warp transition prototype (v5)
+
+`GET /rnd-transition-presets` returns the existing preset names `liquid_wormhole` and `liquid_wormhole_impact`.
+
+`POST /test-transition` keeps the existing Action field names: `image_a_url`, `image_b_url`, `duration`, `fps`, `aspect_ratio`, `intensity`, `shake_px`, `origin_x`, and `origin_y`. The Coastal image compresses into a spiral around the selected origin. The Transitional image starts compressed at the same point, then opens after the midpoint. The graph uses clamped 16-bit coordinate maps and a full-frame dissolve, without a circular matte or dark overlay. Test B uses a damped impact shift; the Bent Tree comparison uses `shake_px: 18`.
+
+The Bent Tree regression inputs are the existing Coastal and Transitional primary-bedroom images. Comparison settings: 1.0 second, 30 FPS, 9:16 (1080 × 1920), intensity 0.65; maximum compression is at 0.5 seconds into the transition. Generated local renders are review-only and are not committed.
+
+Run validation and regression tests with `npm test`. This code stays on the R&D branch; production `server.js`, Ken Burns, compound motion, and S3 behavior are unchanged.
+
+
 ### Fixed preset
 
 `POST /test-cinematic-motion`
