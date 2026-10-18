@@ -72,8 +72,8 @@ function buildFilterGraph(options, dimensions = {}) {
   const height = dimensions.height || (options.aspect === "9:16" ? 1920 : 1080);
   const duration = options.duration;
   const transitionOffset = 1;
-  const handoffDuration = Math.min(0.10, duration * 0.2);
-  const handoffOffset = transitionOffset + duration / 2 - handoffDuration;
+  const handoffDuration = Math.min(0.20, duration * 0.2);
+  const handoffOffset = transitionOffset + duration / 2;
   const pad = 64;
   const paddedWidth = width + 2 * pad;
   const paddedHeight = height + 2 * pad;
