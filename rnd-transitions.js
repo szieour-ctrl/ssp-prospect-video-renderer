@@ -42,7 +42,7 @@ function filters(p){
  // FFmpeg rotate uses radians, and runs on each incoming frame. Opposing twists create the vortex sensation.
  const a1="'"+rotation+"*min(max((t-0.8)/"+d+",0),1)'";
  const a2="'-"+rotation+"*(1-min(max(t/"+d+",0),1))'";
- const pad=48,ww=w+2*pad,hh=h+2*pad;
+ const pad=180,ww=w+2*pad,hh=h+2*pad;
  const prefix=(i,label,angle)=>[
   "["+i+":v]fps="+p.fps,
   "scale="+ww+":"+hh+":force_original_aspect_ratio=increase",
@@ -79,9 +79,9 @@ module.exports=function registerTransitionRoutes(app){
    const a=path.join(dir,"a.jpg"),b=path.join(dir,"b.jpg"),out=path.join(dir,"transition.mp4");
    await Promise.all([getImage(req.body.image_a_url,a),getImage(req.body.image_b_url,b)]);
    const f=filters(p);
-   const seconds=(1+p.duration).toFixed(3);
-   const args=["-y","-loop","1","-framerate",String(p.fps),"-t",seconds,"-i",a,
-    "-loop","1","-framerate",String(p.fps),"-t",seconds,"-i",b,
+   const firstSeconds=(1+p.duration).toFixed(3),secondSeconds=(2+p.duration).toFixed(3);
+   const args=["-y","-loop","1","-framerate",String(p.fps),"-t",firstSeconds,"-i",a,
+    "-loop","1","-framerate",String(p.fps),"-t",secondSeconds,"-i",b,
     "-filter_complex",f.graph,"-map","[outv]","-t",f.total,
     "-an","-c:v","libx264","-preset","veryfast","-crf","20",
     "-pix_fmt","yuv420p","-movflags","+faststart",out];
