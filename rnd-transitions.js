@@ -6,7 +6,9 @@ const axios = require("axios");
 const { execFile } = require("child_process");
 const { promisify } = require("util");
 const { S3Client, PutObjectCommand } = require("@aws-sdk/client-s3");
-const { PRESETS, validate, buildFilterGraph } = require("./vortex-warp");
+const { PRESETS: VORTEX_PRESETS, validate, buildFilterGraph } = require("./vortex-warp");
+const { validateClassic, buildClassicGraph } = require("./classic-wormhole");
+const PRESETS = [...VORTEX_PRESETS, "liquid_wormhole_classic"];
 
 const execFileAsync = promisify(execFile);
 const REGION = process.env.AWS_REGION || "us-east-2";
@@ -29,12 +31,16 @@ function safe(value) {
 
 module.exports = function registerTransitionRoutes(app) {
   app.get("/rnd-transition-presets", (_request, response) => response.json({
-    success: true, presets: PRESETS, version: "0.5.0", status: "R&D spiral warp"
+    success: true, presets: PRESETS, version: "0.6.0", status: "R&D vortex and classic v3"
   }));
 
   app.post("/test-transition", async (request, response) => {
     let params;
-    try { params = validate(request.body || {}); }
+    try {
+      params = request.body?.preset === "liquid_wormhole_classic"
+        ? validateClassic(request.body || {})
+        : validate(request.body || {});
+    }
     catch (error) { return response.status(400).json({ success: false, error: error.message }); }
     if (!BUCKET) return response.status(503).json({ success: false, error: "AWS_S3_BUCKET is not configured" });
 
@@ -47,7 +53,8 @@ module.exports = function registerTransitionRoutes(app) {
         getImage(request.body.image_a_url, imageA),
         getImage(request.body.image_b_url, imageB)
       ]);
-      const render = buildFilterGraph(params);
+      const isClassic = params.preset === "liquid_wormhole_classic";
+      const render = isClassic ? buildClassicGraph(params) : buildFilterGraph(params);
       const firstSeconds = (1 + params.duration).toFixed(3);
       const secondSeconds = (2 + params.duration).toFixed(3);
       const args = [
@@ -70,11 +77,16 @@ module.exports = function registerTransitionRoutes(app) {
         success: true, video_url: videoUrl, public_id: key,
         render: {
           preset: params.preset, duration: params.duration, aspect_ratio: params.aspect,
-          render_width: render.width, render_height: render.height, fps: params.fps,
+          render_width: render.width ?? render.w, render_height: render.height ?? render.h, fps: params.fps,
           intensity: params.strength,
           shake_px: params.preset === "liquid_wormhole_impact" ? params.shake : 0,
           transition_midpoint_seconds: Number((params.duration / 2).toFixed(3)),
-          status: "spiral warp with inward collapse and outward reveal; no opaque wipe"
+          status: isClassic
+            ? "restored Liquid Wormhole v3 circle-open reveal with legacy midpoint dip"
+            : "spiral warp with inward collapse and outward reveal; no opaque wipe",
+          peak_darken: isClassic ? params.peakDarken : undefined,
+          darken_peak_time: isClassic ? params.darkenPeakTime : undefined,
+          darken_curve: isClassic ? params.darkenCurve : undefined
         }
       });
     } catch (error) {

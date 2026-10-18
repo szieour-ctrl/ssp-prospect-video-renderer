@@ -28,15 +28,17 @@ Expected response includes:
 
 ## R&D routes
 
-### Spiral-warp transition prototype (v5)
+### Liquid Wormhole classic and spiral-warp prototype
 
-`GET /rnd-transition-presets` returns the existing preset names `liquid_wormhole` and `liquid_wormhole_impact`.
+`GET /rnd-transition-presets` returns the existing `liquid_wormhole` and `liquid_wormhole_impact` presets plus `liquid_wormhole_classic`. The classic preset restores the exact pre-PR #1 v3 FFmpeg graph recovered from commit `fbc96753a9246fe5dd007fea490d5084822a011d`; the two existing preset names continue to use the separate spiral-warp implementation.
 
-`POST /test-transition` keeps the existing Action field names: `image_a_url`, `image_b_url`, `duration`, `fps`, `aspect_ratio`, `intensity`, `shake_px`, `origin_x`, and `origin_y`. The Coastal image compresses into a spiral around the selected origin. The Transitional image starts compressed at the same point, then opens after the midpoint. The graph uses clamped 16-bit coordinate maps and a full-frame dissolve, without a circular matte or dark overlay. Test B uses a damped impact shift; the Bent Tree comparison uses `shake_px: 18`.
+Classic requests accept the same image, duration, FPS, aspect, intensity, and zero-shake fields, plus `peak_darken` (0.00–0.15, additional to the original v3 midpoint dip), `darken_peak_time` (0–1 fraction of the transition, default 0.50), and `darken_curve` (`smooth`). A zero `peak_darken` reproduces the recovered v3 filter graph exactly. The optional extra dip uses a smooth Gaussian curve centered at the selected time and returns to full baseline brightness afterward. Both 9:16 and 16:9 are supported.
 
-The Bent Tree regression inputs are the existing Coastal and Transitional primary-bedroom images. Comparison settings: 1.0 second, 30 FPS, 9:16 (1080 × 1920), intensity 0.65; maximum compression is at 0.5 seconds into the transition. Generated local renders are review-only and are not committed.
+`POST /test-transition` keeps the existing Action field names: `image_a_url`, `image_b_url`, `duration`, `fps`, `aspect_ratio`, `intensity`, `shake_px`, `origin_x`, and `origin_y`. For the classic preset, include the three optional darkening controls. The spiral-warp behavior remains on `liquid_wormhole` and `liquid_wormhole_impact`; it is implemented with clamped 16-bit coordinate maps and an inward collapse/outward reveal.
 
-Run validation and regression tests with `npm test`. This code stays on the R&D branch; production `server.js`, Ken Burns, compound motion, and S3 behavior are unchanged.
+Bent Tree Coastal and Transitional primary-bedroom comparisons use 1.0 second, 30 FPS, 9:16 (1080 × 1920), intensity 0.65, and zero shake. A is the original v3 baseline; B and C add 8% and 12% smooth peak darkening. Automated regression tests compare the zero-additional-darkening graph against the recovered v3 function and retain all vortex regressions. Run them with `npm test`.
+
+The R&D branch does not change production `server.js`, Ken Burns, compound motion, S3 handling, or production deployment routes.
 
 
 ### Fixed preset
