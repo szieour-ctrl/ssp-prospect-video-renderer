@@ -37,11 +37,11 @@ function filters(p){
  const w=p.aspect==="9:16"?1080:1920,h=p.aspect==="9:16"?1920:1080;
  const d=p.duration.toFixed(3),offset="1.000",total=(2+p.duration).toFixed(3);
  const zoom=(1.045+0.035*p.strength).toFixed(4);
- const rotation=(0.12*p.strength).toFixed(4);
+ const rotation=(0.045*p.strength).toFixed(4);
  const cx=(p.originX*w).toFixed(1),cy=(p.originY*h).toFixed(1);
  // FFmpeg rotate uses radians, and runs on each incoming frame. Opposing twists create the vortex sensation.
- const a1="'"+rotation+"*min(max((t-0.8)/"+d+",0),1)'";
- const a2="'-"+rotation+"*(1-min(max(t/"+d+",0),1))'";
+ const a1="'"+rotation+"*exp(-20*max(t-1.12,0))*sin(75*max(t-1.12,0))*gte(t,1.12)'";
+ const a2="'-"+rotation+"*exp(-20*max(t-0.12,0))*sin(75*max(t-0.12,0))*gte(t,0.12)'";
  const pad=180,ww=w+2*pad,hh=h+2*pad;
  const prefix=(i,label,angle)=>[
   "["+i+":v]fps="+p.fps,
@@ -64,7 +64,7 @@ function filters(p){
  "[a][b]xfade=transition=circleopen:duration="+d+":offset="+offset+",",
  "pad="+ww+":"+hh+":"+pad+":"+pad+":color=black,",
  "crop="+w+":"+h+":x="+nx+":y="+ny+",",
- "format=yuv420p[outv]"
+ "eq=brightness=\'-0.17*exp(-pow((t-"+(1+p.duration*0.5).toFixed(3)+")/"+(p.duration*0.25).toFixed(3)+",2))\':eval=frame,format=yuv420p[outv]"
  ].join("");
  return {graph,w,h,total,origin:{x:cx,y:cy}};
 }
