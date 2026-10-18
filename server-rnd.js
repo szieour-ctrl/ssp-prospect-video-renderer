@@ -1871,6 +1871,8 @@ app.post(
 // START SERVER
 // ─────────────────────────────────────────────────────────────
 
+require("./rnd-transitions")(app);
+
 app.listen(
   PORT,
   "0.0.0.0",
