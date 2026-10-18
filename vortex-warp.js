@@ -72,6 +72,8 @@ function buildFilterGraph(options, dimensions = {}) {
   const height = dimensions.height || (options.aspect === "9:16" ? 1920 : 1080);
   const duration = options.duration;
   const transitionOffset = 1;
+  const handoffDuration = Math.min(0.10, duration * 0.2);
+  const handoffOffset = transitionOffset + duration / 2 - handoffDuration;
   const pad = 64;
   const paddedWidth = width + 2 * pad;
   const paddedHeight = height + 2 * pad;
@@ -107,7 +109,7 @@ function buildFilterGraph(options, dimensions = {}) {
     mapFilters("transitional", "open", 1) + ";",
     input(0, "coastal") + ";",
     input(1, "transitional") + ";",
-    `[coastal][transitional]xfade=transition=fade:duration=${duration.toFixed(3)}:offset=${transitionOffset.toFixed(3)},format=yuv420p[outv]`
+    `[coastal][transitional]xfade=transition=fade:duration=${handoffDuration.toFixed(3)}:offset=${handoffOffset.toFixed(3)},format=yuv420p[outv]`
   ].join("");
   return { graph, width, height, total: (2 + duration).toFixed(3), midpoint: hit };
 }
