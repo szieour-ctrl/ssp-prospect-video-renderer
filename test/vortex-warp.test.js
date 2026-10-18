@@ -36,7 +36,7 @@ test("warps Coastal inward and Transitional outward at the transition midpoint",
   assert.equal(result.width, 1080);
   assert.equal(result.height, 1920);
   assert.equal(result.midpoint, 1.5); // transition starts at 1.0s; midpoint is +0.5s
-  assert.match(result.graph, /xfade=transition=fade:duration=1\.000:offset=1\.000/);
+  assert.match(result.graph, /xfade=transition=fade:duration=0\.100:offset=1\.400/); // Incoming room is fully present at the apex
   assert.equal((result.graph.match(/geq=lum=/g) || []).length, 4);
   assert.match(result.graph, /1\+0\.55250\*/); // Local radial refraction strength at intensity 0.65
   assert.match(result.graph, /1\*0\.24700\*/); // Faint local swirl rather than a full-frame rotation
@@ -52,6 +52,8 @@ test("Test B applies a damped 18-pixel impact jolt while Test A stays steady", (
   const a = buildFilterGraph(validate({ ...base, preset: "liquid_wormhole" })).graph;
   const b = buildFilterGraph(validate({ ...base, preset: "liquid_wormhole_impact", shake_px: 18 })).graph;
   assert.match(b, /18\*exp\(-12\*max\(t-1\.500,0\)\)/);
+  assert.match(b, /18\*exp\(-12\*max\(t-0\.500,0\)\)/); // Both image streams jolt at the handoff apex
+  assert.match(b, /xfade=transition=fade:duration=0\.100:offset=1\.400/);
   assert.notEqual(a, b);
   assert.doesNotMatch(a, /18\*exp/);
 });
