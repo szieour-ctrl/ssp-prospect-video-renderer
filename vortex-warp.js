@@ -38,15 +38,19 @@ function smoothProgress(expr) {
   return `(${expr})*(${expr})*(3-2*(${expr}))`;
 }
 
-function warpExpressions({ width, height, mapWidth, mapHeight, fps, strength, phase, direction, originX, originY }) {
+function warpExpressions({ width, height, mapWidth, mapHeight, fps, duration, strength, phase, direction, originX, originY }) {
   const cx = (originX * width).toFixed(2);
   const cy = (originY * height).toFixed(2);
   const radius = Math.hypot(width, height) / 2;
+  const halfDuration = (duration / 2).toFixed(3);
+  const openDuration = (duration * 0.4).toFixed(3);
+  const transitionOffset = 1;
+  const frameTime = `(N/${fps})`;
   const raw = phase === "collapse"
-    ? `min(max((T-1)/0.5,0),1)`
-    : `min(max((T-0.5)/0.5,0),1)`;
+    ? `min(max((${frameTime}-${transitionOffset})/${halfDuration},0),1)`
+    : `min(max((${frameTime}-${(duration / 2).toFixed(3)})/${openDuration},0),1)`;
   const p = smoothProgress(raw);
-  const minimumScale = (0.22 - 0.1 * strength).toFixed(4);
+  const minimumScale = (0.62 - 0.15 * strength).toFixed(4);
   const scale = phase === "collapse"
     ? `(1-(1-${minimumScale})*${p})`
     : `(${minimumScale}+(1-${minimumScale})*${p})`;
@@ -58,7 +62,7 @@ function warpExpressions({ width, height, mapWidth, mapHeight, fps, strength, ph
   const dy = `(${y}-${cy})`;
   const r = `min(1,hypot(${dx},${dy})/${radius.toFixed(2)})`;
   const twist = phase === "collapse" ? p : `(1-${p})`;
-  const theta = `(atan2(${dy},${dx})+${direction}*${(2 * Math.PI * (1.1 + 0.9 * strength)).toFixed(5)}*${twist}*(1-${r}))`;
+  const theta = `(atan2(${dy},${dx})+${direction}*${(2 * Math.PI * (0.10 + 0.23 * strength)).toFixed(5)}*${twist}*(1-${r}))`;
   const sourceRadius = `min(${radius.toFixed(2)},hypot(${dx},${dy})/${scale})`;
   const sx = `clip(${cx}+${sourceRadius}*cos(${theta}),0,${width - 1})`;
   const sy = `clip(${cy}+${sourceRadius}*sin(${theta}),0,${height - 1})`;
@@ -69,6 +73,7 @@ function buildFilterGraph(options, dimensions = {}) {
   const width = dimensions.width || (options.aspect === "9:16" ? 1080 : 1920);
   const height = dimensions.height || (options.aspect === "9:16" ? 1920 : 1080);
   const duration = options.duration;
+  const transitionOffset = 1;
   const pad = 64;
   const paddedWidth = width + 2 * pad;
   const paddedHeight = height + 2 * pad;
@@ -83,7 +88,8 @@ function buildFilterGraph(options, dimensions = {}) {
   };
   const mapFilters = (label, phase, direction) => {
     const map = warpExpressions({
-      width, height, mapWidth, mapHeight, fps: options.fps, strength: options.strength, phase, direction,
+      width, height, mapWidth, mapHeight, fps: options.fps, duration: options.duration,
+      strength: options.strength, phase, direction,
       originX: options.originX, originY: options.originY
     });
     const source = `nullsrc=s=${mapWidth}x${mapHeight}:r=${options.fps}:d=${renderDuration},format=gray16le,geq`;
@@ -103,7 +109,7 @@ function buildFilterGraph(options, dimensions = {}) {
     mapFilters("transitional", "open", -1) + ";",
     input(0, "coastal") + ";",
     input(1, "transitional") + ";",
-    `[coastal][transitional]xfade=transition=fade:duration=${duration.toFixed(3)}:offset=1.000,format=yuv420p[outv]`
+    `[coastal][transitional]xfade=transition=fade:duration=${duration.toFixed(3)}:offset=${transitionOffset.toFixed(3)},format=yuv420p[outv]`
   ].join("");
   return { graph, width, height, total: (2 + duration).toFixed(3), midpoint: hit };
 }
