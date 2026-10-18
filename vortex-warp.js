@@ -1,7 +1,6 @@
 "use strict";
 
 const PRESETS = Object.freeze(["liquid_wormhole", "liquid_wormhole_impact"]);
-const clamp = (value, low, high) => Math.min(high, Math.max(low, value));
 
 function validate(body = {}) {
   const preset = body.preset || "liquid_wormhole";
@@ -50,20 +49,19 @@ function warpExpressions({ width, height, mapWidth, mapHeight, fps, duration, st
     ? `min(max((${frameTime}-${transitionOffset})/${halfDuration},0),1)`
     : `min(max((${frameTime}-${(duration / 2).toFixed(3)})/${openDuration},0),1)`;
   const p = smoothProgress(raw);
-  const minimumScale = (0.62 - 0.15 * strength).toFixed(4);
-  const scale = phase === "collapse"
-    ? `(1-(1-${minimumScale})*${p})`
-    : `(${minimumScale}+(1-${minimumScale})*${p})`;
   const xScale = (width / mapWidth).toFixed(6);
   const yScale = (height / mapHeight).toFixed(6);
   const x = `(X*${xScale})`;
   const y = `(Y*${yScale})`;
   const dx = `(${x}-${cx})`;
   const dy = `(${y}-${cy})`;
-  const r = `min(1,hypot(${dx},${dy})/${radius.toFixed(2)})`;
-  const twist = phase === "collapse" ? p : `(1-${p})`;
-  const theta = `(atan2(${dy},${dx})+${direction}*${(2 * Math.PI * (0.10 + 0.23 * strength)).toFixed(5)}*${twist}*(1-${r}))`;
-  const sourceRadius = `min(${radius.toFixed(2)},hypot(${dx},${dy})/${scale})`;
+  // Keep the refractive vortex inside the frame so the room perimeter stays stable.
+  const refractionRadius = Math.min(width, height) / 2;
+  const r = `(hypot(${dx},${dy})/${refractionRadius.toFixed(2)})`;
+  const falloff = `exp(-pow(${r}/0.550,2))`;
+  const amount = phase === "collapse" ? p : `(1-${p})`;
+  const theta = `(atan2(${dy},${dx})+${direction}*${(0.38 * strength).toFixed(5)}*${amount}*${falloff})`;
+  const sourceRadius = `min(${radius.toFixed(2)},hypot(${dx},${dy})*(1+${(0.85 * strength).toFixed(5)}*${amount}*${falloff}))`;
   const sx = `clip(${cx}+${sourceRadius}*cos(${theta}),0,${width - 1})`;
   const sy = `clip(${cy}+${sourceRadius}*sin(${theta}),0,${height - 1})`;
   return { x: sx, y: sy };
@@ -106,7 +104,7 @@ function buildFilterGraph(options, dimensions = {}) {
   const renderDuration = (2 + duration).toFixed(3);
   const graph = [
     mapFilters("coastal", "collapse", 1) + ";",
-    mapFilters("transitional", "open", -1) + ";",
+    mapFilters("transitional", "open", 1) + ";",
     input(0, "coastal") + ";",
     input(1, "transitional") + ";",
     `[coastal][transitional]xfade=transition=fade:duration=${duration.toFixed(3)}:offset=${transitionOffset.toFixed(3)},format=yuv420p[outv]`
