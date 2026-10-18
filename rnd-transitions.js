@@ -40,8 +40,8 @@ function filters(p){
  const rotation=(0.045*p.strength).toFixed(4);
  const cx=(p.originX*w).toFixed(1),cy=(p.originY*h).toFixed(1);
  // FFmpeg rotate uses radians, and runs on each incoming frame. Opposing twists create the vortex sensation.
- const a1="'"+rotation+"*exp(-20*max(t-1.12,0))*sin(75*max(t-1.12,0))*gte(t,1.12)'";
- const a2="'-"+rotation+"*exp(-20*max(t-0.12,0))*sin(75*max(t-0.12,0))*gte(t,0.12)'";
+ const a1="'"+rotation+"*exp(-20*max(t-1.40,0))*sin(75*max(t-1.40,0))*gte(t,1.40)'";
+ const a2="'-"+rotation+"*exp(-20*max(t-0.40,0))*sin(75*max(t-0.40,0))*gte(t,0.40)'";
  const pad=180,ww=w+2*pad,hh=h+2*pad;
  const prefix=(i,label,angle)=>[
   "["+i+":v]fps="+p.fps,
