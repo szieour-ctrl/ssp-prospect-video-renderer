@@ -38,11 +38,12 @@ test("warps Coastal inward and Transitional outward at the transition midpoint",
   assert.equal(result.midpoint, 1.5); // transition starts at 1.0s; midpoint is +0.5s
   assert.match(result.graph, /xfade=transition=fade:duration=1\.000:offset=1\.000/);
   assert.equal((result.graph.match(/geq=lum=/g) || []).length, 4);
-  assert.match(result.graph, /\(1-\(1-0\.1550\)\*/); // Coastal compresses to 15.5% at intensity 0.65
-  assert.match(result.graph, /\(0\.1550\+\(1-0\.1550\)\*/); // Transitional opens from 15.5%
-  assert.match(result.graph, /T-1\)\/0\.5/); // Coastal collapses during the first half
-  assert.match(result.graph, /T-0\.5\)\/0\.5/); // Transitional opens during the second half on its local timeline
-  assert.match(result.graph, /1-\(min\(max\(\(T-0\.5\)/); // Incoming twist unwinds as it opens
+  assert.match(result.graph, /\(1-\(1-0\.5225\)\*/); // Coastal remains legible while compressing
+  assert.match(result.graph, /\(0\.5225\+\(1-0\.5225\)\*/); // Transitional emerges from a visible central vortex
+  assert.match(result.graph, /\(N\/30\)-1\)\/0\.500/); // Coastal collapses during the first half
+  assert.match(result.graph, /\(N\/30\)-0\.500\)\/0\.400/); // Transitional begins opening at maximum compression
+  assert.match(result.graph, /1-\(min\(max\(\(\(N\/30\)-0\.500\)/); // Incoming twist unwinds as it opens
+  assert.match(result.graph, /1\*1\.56765\*/); // Under a quarter turn at intensity 0.65
   assert.doesNotMatch(result.graph, /circleopen|circleclose|color=black|brightness=/);
 });
 
