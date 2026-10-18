@@ -59,8 +59,8 @@ function filters(p){
  const ny="'"+pad+"+"+amp+"*0.60*exp(-18*max(t-"+start+",0))*cos(94*max(t-"+start+",0))*gte(t,"+start+")'";
  // circleopen expands the second image out from the first. Rotation and blur simulate refractive pull.
  const graph=[
- prefix(0,"a",a1),
- prefix(1,"b",a2),
+ prefix(0,"a",a1)+";",
+ prefix(1,"b",a2)+";",
  "[a][b]xfade=transition=circleopen:duration="+d+":offset="+offset+",",
  "pad="+ww+":"+hh+":"+pad+":"+pad+":color=black,",
  "crop="+w+":"+h+":x="+nx+":y="+ny+",",
