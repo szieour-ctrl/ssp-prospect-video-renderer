@@ -37,12 +37,14 @@ function filters(p){
  const w=p.aspect==="9:16"?1080:1920,h=p.aspect==="9:16"?1920:1080;
  const d=p.duration.toFixed(3),offset="1.000",total=(2+p.duration).toFixed(3);
  const zoom=(1.045+0.035*p.strength).toFixed(4);
- const rotation=(0.045*p.strength).toFixed(4);
+ const rotation=(0.17*p.strength/0.65).toFixed(4);
  const cx=(p.originX*w).toFixed(1),cy=(p.originY*h).toFixed(1);
  // FFmpeg rotate uses radians, and runs on each incoming frame. Opposing twists create the vortex sensation.
- const a1="'"+rotation+"*exp(-20*max(t-1.40,0))*sin(75*max(t-1.40,0))*gte(t,1.40)'";
- const a2="'-"+rotation+"*exp(-20*max(t-0.40,0))*sin(75*max(t-0.40,0))*gte(t,0.40)'";
- const pad=180,ww=w+2*pad,hh=h+2*pad;
+ const a1="0";
+ const a2="0";
+ const pad=260,ww=w+2*pad,hh=h+2*pad;
+ const hit=(1+p.duration*0.40).toFixed(3);
+ const kick="\'-"+rotation+"*exp(-14*max(t-"+hit+",0))*gte(t,"+hit+")\'";
  const prefix=(i,label,angle)=>[
   "["+i+":v]fps="+p.fps,
   "scale="+ww+":"+hh+":force_original_aspect_ratio=increase",
@@ -54,7 +56,7 @@ function filters(p){
  ].join(",");
  const shake=p.preset==="liquid_wormhole_impact"?p.shake:0;
  // Animate a fast-damped jolt centered on the image swap. Crop overscan prevents exposed edges.
- const amp=shake.toFixed(2),start=(1+p.duration*0.42).toFixed(3);
+ const amp=shake.toFixed(2),start=hit;
  const nx="'"+pad+"+"+amp+"*exp(-18*max(t-"+start+",0))*sin(110*max(t-"+start+",0))*gte(t,"+start+")'";
  const ny="'"+pad+"+"+amp+"*0.60*exp(-18*max(t-"+start+",0))*cos(94*max(t-"+start+",0))*gte(t,"+start+")'";
  // circleopen expands the second image out from the first. Rotation and blur simulate refractive pull.
@@ -63,14 +65,15 @@ function filters(p){
  prefix(1,"b",a2)+";",
  "[a][b]xfade=transition=circleopen:duration="+d+":offset="+offset+",",
  "pad="+ww+":"+hh+":"+pad+":"+pad+":color=black,",
+ "rotate="+kick+":c=black:ow=iw:oh=ih,",
  "crop="+w+":"+h+":x="+nx+":y="+ny+",",
- "eq=brightness=\'-0.17*exp(-pow((t-"+(1+p.duration*0.5).toFixed(3)+")/"+(p.duration*0.25).toFixed(3)+",2))\':eval=frame,format=yuv420p[outv]"
+ "eq=brightness=\'-0.88*exp(-pow((t-"+(1+p.duration*0.48).toFixed(3)+")/"+(p.duration*0.24).toFixed(3)+",4))\':eval=frame,format=yuv420p[outv]"
  ].join("");
  return {graph,w,h,total,origin:{x:cx,y:cy}};
 }
 function safe(v){return String(v||"transition").toLowerCase().replace(/[^a-z0-9-_]/g,"-").slice(0,80);}
 module.exports=function registerTransitionRoutes(app){
- app.get("/rnd-transition-presets",(_req,res)=>res.json({success:true,presets:PRESETS,version:"0.1.0",status:"prototype"}));
+ app.get("/rnd-transition-presets",(_req,res)=>res.json({success:true,presets:PRESETS,version:"0.3.0",status:"prototype"}));
  app.post("/test-transition",async(req,res)=>{
   let p;try{p=validate(req.body||{});}catch(e){return res.status(400).json({success:false,error:e.message});}
   if(!BUCKET)return res.status(503).json({success:false,error:"AWS_S3_BUCKET is not configured"});
@@ -89,7 +92,7 @@ module.exports=function registerTransitionRoutes(app){
    const key="ssp-prospects/"+safe(req.body.prospect_id||"transition-rnd")+"/tests/"+safe(req.body.output_name||p.preset)+"-"+Date.now()+".mp4";
    await s3.send(new PutObjectCommand({Bucket:BUCKET,Key:key,Body:fs.createReadStream(out),ContentType:"video/mp4"}));
    const url="https://"+BUCKET+".s3."+REGION+".amazonaws.com/"+key.split("/").map(encodeURIComponent).join("/");
-   res.json({success:true,video_url:url,public_id:key,render:{preset:p.preset,duration:p.duration,aspect_ratio:p.aspect,render_width:f.w,render_height:f.h,fps:p.fps,intensity:p.strength,shake_px:p.preset==="liquid_wormhole_impact"?p.shake:0,status:"optical wormhole prototype; not true fluid displacement"}});
+   res.json({success:true,video_url:url,public_id:key,render:{preset:p.preset,duration:p.duration,aspect_ratio:p.aspect,render_width:f.w,render_height:f.h,fps:p.fps,intensity:p.strength,shake_px:p.preset==="liquid_wormhole_impact"?p.shake:0,status:"v4 explosive post-composite tilt and near-black mask; optical prototype"}});
   }catch(e){console.error("[TRANSITION RND]",e.stderr||e.message);res.status(500).json({success:false,error:e.message});}
   finally{await fs.promises.rm(dir,{recursive:true,force:true});}
  });
