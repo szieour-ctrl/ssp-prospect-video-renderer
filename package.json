@@ -5,7 +5,8 @@
   "main": "server-rnd.js",
   "scripts": {
     "start": "node server-rnd.js",
-    "start:production": "node server.js"
+    "start:production": "node server.js",
+    "test": "node --test test/*.test.js"
   },
   "engines": {
     "node": ">=20"
