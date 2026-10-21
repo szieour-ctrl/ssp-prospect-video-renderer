@@ -17,6 +17,64 @@ const {
 const execFileAsync = promisify(execFile);
 
 const app = express();
+
+// ─────────────────────────────────────────────────────────────
+// API KEY GATE (Oct 20, 2026)
+//
+// The render routes spend ElevenLabs credits, Railway compute and S3 writes, and they
+// download whatever image URLs the caller sends, so they must not be open to the internet.
+// Callers (the Custom GPT Action, Pabbly, anything else) send the shared key as
+//   x-api-key: <RENDERER_API_KEY>     or     Authorization: Bearer <RENDERER_API_KEY>
+//
+// Protected: every route whose path starts with /render- or /test-.
+// Left open on purpose: /health, /watch/:prospectId and /track/click (prospect-facing),
+// and /dashboard + /api/* (they use their own dashboard key).
+//
+// Fails CLOSED: if RENDERER_API_KEY is not set on Railway, protected routes answer 503
+// instead of silently running unprotected. Runs before body parsing so unauthenticated
+// callers cannot make the server parse a 5 MB body.
+// ─────────────────────────────────────────────────────────────
+
+const crypto = require("crypto");
+
+function keysMatch(provided, expected) {
+  const a = crypto.createHash("sha256").update(String(provided || "")).digest();
+  const b = crypto.createHash("sha256").update(String(expected || "")).digest();
+  return crypto.timingSafeEqual(a, b);
+}
+
+function requireRendererKey(req, res, next) {
+  const expected = process.env.RENDERER_API_KEY;
+
+  if (!expected) {
+    console.error(`[auth] RENDERER_API_KEY is not set; refusing ${req.method} ${req.path}`);
+    return res.status(503).json({
+      success: false,
+      error: "Renderer is not configured"
+    });
+  }
+
+  const bearer = /^Bearer\s+(.+)$/i.exec(String(req.headers.authorization || ""));
+  const provided = req.headers["x-api-key"] || (bearer ? bearer[1].trim() : "");
+
+  if (!provided || !keysMatch(provided, expected)) {
+    console.warn(`[auth] rejected ${req.method} ${req.path} from ${req.ip || "unknown"} (${provided ? "wrong key" : "no key"})`);
+    return res.status(401).json({
+      success: false,
+      error: "Unauthorized"
+    });
+  }
+
+  return next();
+}
+
+app.use((req, res, next) => {
+  if (/^\/(render-|test-)/.test(req.path)) {
+    return requireRendererKey(req, res, next);
+  }
+  return next();
+});
+
 app.use(express.json({ limit: "5mb" }));
 
 const PORT = process.env.PORT || 3000;
