@@ -31,7 +31,8 @@ export function createBridge(config, authorize) {
       return res.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify({
         resource: config.resource,
         authorization_servers: [config.issuer],
-        bearer_methods_supported: ['header']
+        bearer_methods_supported: ['header'],
+        scopes_supported: ['ssp:prospecting']
       }));
     }
     if (path !== '/mcp') return res.writeHead(404).end();
@@ -109,6 +110,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   const issuer = required('SSP_MCP_OAUTH_ISSUER');
   configuredUrl(issuer);
   const subject = required('SSP_MCP_ALLOWED_SUBJECT');
+  const clientId = required('SSP_MCP_OAUTH_CLIENT_ID');
   const jwks = createRemoteJWKSet(configuredUrl(required('SSP_MCP_JWKS_URL')));
   const config = {
     resource, issuer,
@@ -123,7 +125,8 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
       const { payload } = await jwtVerify(token, jwks, {
         issuer, audience: resource, subject, requiredClaims: ['exp']
       });
-      return typeof payload.exp === 'number';
+      return payload.azp === clientId &&
+        typeof payload.scope === 'string' && payload.scope.split(/\s+/).includes('ssp:prospecting');
     } catch {
       return false;
     }
