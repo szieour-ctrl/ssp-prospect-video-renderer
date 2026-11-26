@@ -94,24 +94,27 @@ function required(name) {
   return value;
 }
 
-function httpsUrl(value) {
+function configuredUrl(value, { railwayPrivate = false } = {}) {
   const url = new URL(value);
-  if (url.protocol !== 'https:' || url.username || url.password || url.hash) throw new Error('Expected an HTTPS URL');
+  const privateHttp = railwayPrivate && url.protocol === 'http:' && url.hostname.endsWith('.railway.internal');
+  if ((!privateHttp && url.protocol !== 'https:') || url.username || url.password || url.hash) {
+    throw new Error('Expected an HTTPS URL or an allowed Railway private address');
+  }
   return url;
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  const resource = httpsUrl(required('SSP_MCP_RESOURCE_URL')).href;
+  const resource = configuredUrl(required('SSP_MCP_RESOURCE_URL')).href;
   if (new URL(resource).pathname !== '/mcp' || new URL(resource).search) throw new Error('Expected a canonical /mcp URL');
   const issuer = required('SSP_MCP_OAUTH_ISSUER');
-  httpsUrl(issuer);
+  configuredUrl(issuer);
   const subject = required('SSP_MCP_ALLOWED_SUBJECT');
-  const jwks = createRemoteJWKSet(httpsUrl(required('SSP_MCP_JWKS_URL')));
+  const jwks = createRemoteJWKSet(configuredUrl(required('SSP_MCP_JWKS_URL')));
   const config = {
     resource, issuer,
-    renderer: httpsUrl(required('SSP_MCP_RENDERER_URL')),
+    renderer: configuredUrl(required('SSP_MCP_RENDERER_URL'), { railwayPrivate: true }),
     rendererKey: required('SSP_MCP_RENDERER_API_KEY'),
-    pabbly: process.env.SSP_MCP_PABBLY_V2_WEBHOOK && httpsUrl(process.env.SSP_MCP_PABBLY_V2_WEBHOOK)
+    pabbly: process.env.SSP_MCP_PABBLY_V2_WEBHOOK && configuredUrl(process.env.SSP_MCP_PABBLY_V2_WEBHOOK)
   };
   const authorize = async (header) => {
     const token = /^Bearer (\S+)$/i.exec(header || '')?.[1];
