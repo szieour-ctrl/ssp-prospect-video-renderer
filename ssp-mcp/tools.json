@@ -1,0 +1,403 @@
+{
+  "renderProspectVideoV2": {
+    "description": "Render personalized SSP prospect video",
+    "inputSchema": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "prospect_id",
+        "agent_email",
+        "property_address",
+        "campaign_tag",
+        "qr_code_url",
+        "interior_before_image_url",
+        "interior_after_image_url",
+        "exterior_before_image_url",
+        "exterior_after_image_url",
+        "card_1",
+        "card_2",
+        "narration_card_1"
+      ],
+      "properties": {
+        "prospect_id": {
+          "type": "string",
+          "description": "Internal prospect ID, normally mls-<MLS_NUMBER>."
+        },
+        "agent_first_name": {
+          "type": "string"
+        },
+        "agent_name": {
+          "type": "string"
+        },
+        "agent_email": {
+          "type": "string",
+          "format": "email"
+        },
+        "agent_phone_primary": {
+          "type": "string",
+          "description": "Primary agent phone number from the current MLS report."
+        },
+        "agent_phone_secondary": {
+          "type": "string",
+          "description": "Secondary agent phone number from the current MLS report when available."
+        },
+        "property_address": {
+          "type": "string"
+        },
+        "mls_number": {
+          "type": "string"
+        },
+        "campaign_tag": {
+          "type": "string",
+          "enum": [
+            "VACANT_LISTING",
+            "BUILDER_QMI",
+            "VIRTUAL_STAGING_REVIEW"
+          ],
+          "description": "Campaign route. V2 rendering is used for all three campaigns."
+        },
+        "qr_code_url": {
+          "type": "string",
+          "format": "uri",
+          "description": "Renderer QR image URL. Pass qr_code_image_url into this renderer-only field."
+        },
+        "fps": {
+          "type": "number",
+          "minimum": 1,
+          "maximum": 60
+        },
+        "interior_before_image_url": {
+          "type": "string",
+          "format": "uri",
+          "description": "Raw HTTPS URL only."
+        },
+        "interior_after_image_url": {
+          "type": "string",
+          "format": "uri",
+          "description": "Raw HTTPS URL only."
+        },
+        "exterior_before_image_url": {
+          "type": "string",
+          "format": "uri",
+          "description": "Raw HTTPS URL only."
+        },
+        "exterior_after_image_url": {
+          "type": "string",
+          "format": "uri",
+          "description": "Raw HTTPS URL only."
+        },
+        "card_1": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "occupancy_display": {
+              "type": "string"
+            },
+            "listing_type_display": {
+              "type": "string"
+            },
+            "year_built_display": {
+              "type": "string"
+            },
+            "beds_display": {
+              "type": "string"
+            },
+            "baths_display": {
+              "type": "string"
+            },
+            "sqft_display": {
+              "type": "string"
+            },
+            "listing_highlight": {
+              "type": "string"
+            }
+          }
+        },
+        "card_2": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "interior_original_label",
+            "interior_final_label",
+            "exterior_original_label",
+            "exterior_final_labels"
+          ],
+          "properties": {
+            "interior_original_label": {
+              "type": "string"
+            },
+            "interior_final_label": {
+              "type": "string"
+            },
+            "exterior_original_label": {
+              "type": "string"
+            },
+            "exterior_final_labels": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 3,
+              "items": {
+                "type": "string",
+                "enum": [
+                  "STAGED OUTDOOR LIVING",
+                  "LANDSCAPED BACKYARD",
+                  "GOLDEN HOUR EXTERIOR",
+                  "ENHANCED CURB APPEAL",
+                  "TWILIGHT EXTERIOR"
+                ]
+              }
+            }
+          }
+        },
+        "narration_card_1": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Required for all campaigns. Must end with ...[pauses]"
+        },
+        "narration_card_2": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Required by renderer validation for VACANT_LISTING and BUILDER_QMI. Not used for VIRTUAL_STAGING_REVIEW Card 2."
+        },
+        "card_2_audio_url": {
+          "type": "string",
+          "format": "uri",
+          "description": "Optional VIRTUAL_STAGING_REVIEW override. If omitted, Railway uses COMPLIANCE_CARD2_AUDIO_URL."
+        },
+        "card_2_caption_text": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Required by renderer validation for VIRTUAL_STAGING_REVIEW. Spoken caption text only; omit performance tags."
+        }
+      }
+    }
+  },
+  "renderProspectThumbnail": {
+    "description": "Render SSP prospect email thumbnail",
+    "inputSchema": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "interior_before_image_url",
+        "interior_after_image_url",
+        "property_address"
+      ],
+      "properties": {
+        "interior_before_image_url": {
+          "type": "string",
+          "format": "uri",
+          "description": "Required interior original image for the thumbnail. Never pass an exterior image."
+        },
+        "interior_after_image_url": {
+          "type": "string",
+          "format": "uri",
+          "description": "Required matching interior staged/final image for the thumbnail. Must depict the same room/area as interior_before_image_url."
+        },
+        "before_label": {
+          "type": "string"
+        },
+        "after_label": {
+          "type": "string"
+        },
+        "prospect_id": {
+          "type": "string"
+        },
+        "agent_name": {
+          "type": "string"
+        },
+        "property_address": {
+          "type": "string"
+        },
+        "mls_number": {
+          "type": "string"
+        }
+      }
+    }
+  },
+  "sendProspectToPabblyV2": {
+    "description": "Submit the completed prospect to the Pabbly V2 workflow.",
+    "inputSchema": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "prospect_id",
+        "first_name",
+        "agent_email",
+        "campaign_tag",
+        "mls_number",
+        "property_address",
+        "email_subject",
+        "email_html",
+        "second_touch_email_subject",
+        "second_touch_email_html",
+        "qr_code_image_url",
+        "qr_code_target_url",
+        "watch_url",
+        "thumbnail_url"
+      ],
+      "properties": {
+        "created_date": {
+          "type": "string"
+        },
+        "lead_source": {
+          "type": "string"
+        },
+        "prospect_id": {
+          "type": "string"
+        },
+        "first_name": {
+          "type": "string"
+        },
+        "last_name": {
+          "type": "string"
+        },
+        "agent_email": {
+          "type": "string"
+        },
+        "agent_phone_primary": {
+          "type": "string"
+        },
+        "agent_phone_secondary": {
+          "type": "string"
+        },
+        "brokerage": {
+          "type": "string"
+        },
+        "campaign_tag": {
+          "type": "string",
+          "enum": [
+            "VACANT_LISTING",
+            "BUILDER_QMI",
+            "VIRTUAL_STAGING_REVIEW"
+          ]
+        },
+        "campaign_reason": {
+          "type": "string"
+        },
+        "prospect_type": {
+          "type": "string"
+        },
+        "primary_opportunity": {
+          "type": "string"
+        },
+        "priority": {
+          "type": "string"
+        },
+        "mls_number": {
+          "type": "string"
+        },
+        "property_address": {
+          "type": "string"
+        },
+        "street_address": {
+          "type": "string"
+        },
+        "street": {
+          "type": "string"
+        },
+        "list_price": {
+          "type": "string"
+        },
+        "days_on_market": {
+          "type": "string"
+        },
+        "before_image_url": {
+          "type": "string"
+        },
+        "after_image_url": {
+          "type": "string"
+        },
+        "interior_before_image_url": {
+          "type": "string"
+        },
+        "interior_after_image_url": {
+          "type": "string"
+        },
+        "exterior_before_image_url": {
+          "type": "string"
+        },
+        "exterior_after_image_url": {
+          "type": "string"
+        },
+        "video_url": {
+          "type": "string"
+        },
+        "video_public_id": {
+          "type": "string"
+        },
+        "watch_url": {
+          "type": "string",
+          "minLength": 1
+        },
+        "tracking_status": {
+          "type": "string"
+        },
+        "thumbnail_url": {
+          "type": "string",
+          "minLength": 1
+        },
+        "thumbnail_public_id": {
+          "type": "string"
+        },
+        "qr_code_image_url": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Raw HTTPS QR image URL used as img src in QR emails."
+        },
+        "qr_code_target_url": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Prospect/disclosure page URL used as the QR image hyperlink target."
+        },
+        "zillow_listing_url": {
+          "type": "string"
+        },
+        "zillow_listing_slug": {
+          "type": "string"
+        },
+        "zillow_compliance_check_url": {
+          "type": "string"
+        },
+        "email_subject": {
+          "type": "string",
+          "minLength": 1
+        },
+        "email_html": {
+          "type": "string",
+          "minLength": 1
+        },
+        "second_touch_email_subject": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Required Email Touch #2 subject for all campaigns."
+        },
+        "second_touch_email_html": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Required complete Email Touch #2 HTML for all campaigns."
+        },
+        "dubb_script": {
+          "type": "string"
+        },
+        "call_opener": {
+          "type": "string"
+        },
+        "follow_up_day_3": {
+          "type": "string"
+        },
+        "follow_up_day_7": {
+          "type": "string"
+        },
+        "follow_up_day_10": {
+          "type": "string"
+        },
+        "follow_up_day_21": {
+          "type": "string"
+        },
+        "status": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}
